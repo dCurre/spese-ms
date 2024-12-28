@@ -49,8 +49,7 @@ java {
 }
 
 application {
-    // Define the main class for the application.
-    mainClass = 'com.dcapps.spese.App'
+    mainClass = 'com.dcapps.spese.Application'
 }
 
 ext {
