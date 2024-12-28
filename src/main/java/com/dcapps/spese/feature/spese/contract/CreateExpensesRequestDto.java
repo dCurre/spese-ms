@@ -10,7 +10,7 @@ import lombok.experimental.SuperBuilder;
 @EqualsAndHashCode(callSuper = true)
 @Data
 @SuperBuilder(toBuilder = true)
-public class CreateExpensesRequestDto extends BaseExpensesRequestDto{
+public class CreateExpensesRequestDto extends BaseExpensesRequestDto {
 
     @NotNull
     @Min(value = 1)
