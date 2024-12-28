@@ -12,7 +12,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
-@SuperBuilder
+@SuperBuilder(toBuilder = true)
 public class BaseExpensesRequestDto {
 
     @NotNull
