@@ -12,7 +12,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder(toBuilder = true)
-@Table(name = "expenses", schema = "public")
+@Table(name = "expenses", schema = "spese")
 public class Expenses {
 
     @Id
@@ -20,8 +20,8 @@ public class Expenses {
     @Column(name = "id", nullable = false)
     private Long id;
 
-    @Column(name = "description", nullable = false, length = 255)
-    private String description;
+    @Column(name = "\"name\"", nullable = false, length = 255)
+    private String name;
 
     @Column(name = "amount", nullable = false, precision = 10, scale = 2)
     @Builder.Default
@@ -35,6 +35,9 @@ public class Expenses {
 
     @Column(name = "update_date")
     private LocalDateTime updateDate;
+
+    @Column(name = "expense_date")
+    private LocalDateTime expenseDate;
 
     @Column(name = "modified_by")
     private Long modifiedBy;
