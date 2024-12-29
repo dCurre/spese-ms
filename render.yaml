@@ -10,6 +10,6 @@ services:
     startCommand: java -jar build/libs/your-app.jar
     envVars:
       - key: SPRING_PROFILES_ACTIVE
-        value: production
+        value: prod
       - key: PORT
         value: 8080
