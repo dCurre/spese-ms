@@ -2,6 +2,9 @@ services:
   - type: web
     name: java-backend
     env: java
-    buildCommand: ./gradlew build
+    build:
+      commands:
+        - chmod +x ./gradlew
+        - ./gradlew build
     startCommand: java -jar build/libs/your-app.jar
     plan: free
