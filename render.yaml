@@ -1,10 +1,15 @@
 services:
   - type: web
-    name: java-backend
+    name: your-app-name
     env: java
+    plan: free
     build:
       commands:
         - chmod +x ./gradlew
         - ./gradlew build
     startCommand: java -jar build/libs/your-app.jar
-    plan: free
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: production
+      - key: PORT
+        value: 8080
