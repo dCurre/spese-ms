@@ -1,3 +1,5 @@
+print("DAVIDE Loading app.py file")
+
 import os
 import logging
 from flask import Flask
