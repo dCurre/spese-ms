@@ -1,7 +1,6 @@
-from flask import Flask
-from api import api_bp  # Import the API blueprint
+from app import create_app
 
-app = Flask(__name__)
+app = create_app()
 
-# Register the API blueprint
-app.register_blueprint(api_bp, url_prefix='/api')
+if __name__ == '__main__':
+    app.run(debug=True)
