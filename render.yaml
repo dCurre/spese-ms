@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: spese-ms
+    runtime: python
+    plan: free
+    buildCommand: ""
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11
