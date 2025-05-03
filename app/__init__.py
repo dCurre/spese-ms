@@ -2,11 +2,12 @@ from flask import Flask
 from app.api import api
 from app.database import db
 from config import Config
+from flask_cors import CORS
 
 def create_app():
     app = Flask(__name__)  # Move this inside the function
 
-    CORS(app, origins=["https://spesedc.web.app", "http://localhost:4200"])
+    CORS(app)
 
     app.config.from_object(Config)
 
