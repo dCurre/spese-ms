@@ -6,6 +6,8 @@ from config import Config
 def create_app():
     app = Flask(__name__)  # Move this inside the function
 
+    CORS(app)  # Enables CORS for all origins
+
     app.config.from_object(Config)
 
     db.init_app(app)
