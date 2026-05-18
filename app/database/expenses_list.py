@@ -13,5 +13,5 @@ class ExpensesList(db.Model):
     user_id = Column(BigInteger, ForeignKey('spese.users.id'), nullable=False)
     user = relationship('User', backref=db.backref('expenses_lists', cascade='all, delete-orphan'))
     paid = Column(Boolean, nullable=True)
-    creation_date = Column(TIMESTAMP, nullable=True)
-    created_at = Column(TIMESTAMP, nullable=True, server_default=None)
+    created_at = Column(TIMESTAMP, nullable=True, server_default='now()')
+    participants = relationship('ExpensesListParticipant', back_populates='expenses_list', cascade='all, delete-orphan')
