@@ -35,6 +35,23 @@
           }
         },
         {
+          "name": "Get user by email",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/users/by-email/:email",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "by-email", ":email"],
+              "variable": [
+                {
+                  "key": "email",
+                  "value": "mario.rossi@example.com"
+                }
+              ]
+            }
+          }
+        },
+        {
           "name": "Get user by id",
           "request": {
             "method": "GET",
@@ -69,6 +86,33 @@
               "raw": "{{base_url}}/api/users",
               "host": ["{{base_url}}"],
               "path": ["api", "users"]
+            }
+          }
+        },
+        {
+          "name": "Update user by id",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mario\",\n  \"surname\": \"Rossi\",\n  \"email\": \"mario.rossi@example.com\",\n  \"profile_image\": null,\n  \"paid_list_shown\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/users/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
             }
           }
         },
@@ -215,6 +259,20 @@
           }
         },
         {
+          "name": "Update expenses list by id",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Lista aggiornata\",\n  \"paid\": true\n}" },
+            "url": {
+              "raw": "{{base_url}}/api/expenses-lists/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "expenses-lists", ":id"],
+              "variable": [{ "key": "id", "value": "1" }]
+            }
+          }
+        },
+        {
           "name": "Delete expenses list by id",
           "request": {
             "method": "DELETE",
@@ -222,11 +280,52 @@
               "raw": "{{base_url}}/api/expenses-lists/:id",
               "host": ["{{base_url}}"],
               "path": ["api", "expenses-lists", ":id"],
+              "variable": [{ "key": "id", "value": "1" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Expenses List Participants",
+      "item": [
+        {
+          "name": "Get participants by list id",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/expenses-lists/:list_id/participants",
+              "host": ["{{base_url}}"],
+              "path": ["api", "expenses-lists", ":list_id", "participants"],
+              "variable": [{ "key": "list_id", "value": "1" }]
+            }
+          }
+        },
+        {
+          "name": "Add participant",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"user_id\": 1\n}" },
+            "url": {
+              "raw": "{{base_url}}/api/expenses-lists/:list_id/participants",
+              "host": ["{{base_url}}"],
+              "path": ["api", "expenses-lists", ":list_id", "participants"],
+              "variable": [{ "key": "list_id", "value": "1" }]
+            }
+          }
+        },
+        {
+          "name": "Remove participant",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/expenses-lists/:list_id/participants/:user_id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "expenses-lists", ":list_id", "participants", ":user_id"],
               "variable": [
-                {
-                  "key": "id",
-                  "value": "1"
-                }
+                { "key": "list_id", "value": "1" },
+                { "key": "user_id", "value": "1" }
               ]
             }
           }
