@@ -3,13 +3,6 @@
     "name": "spese-ms",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
-  "variable": [
-    {
-      "key": "base_url",
-      "value": "http://localhost:5000",
-      "type": "string"
-    }
-  ],
   "item": [
     {
       "name": "Health",
@@ -40,6 +33,61 @@
               "path": ["api", "users"]
             }
           }
+        },
+        {
+          "name": "Get user by id",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/users/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create user",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mario\",\n  \"surname\": \"Rossi\",\n  \"email\": \"mario.rossi@example.com\",\n  \"profile_image\": null,\n  \"paid_list_shown\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/users",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users"]
+            }
+          }
+        },
+        {
+          "name": "Delete user by id",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/users/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
         }
       ]
     },
@@ -56,6 +104,61 @@
               "path": ["api", "expenses"]
             }
           }
+        },
+        {
+          "name": "Get expense by id",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/expenses/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "expenses", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create expense",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Spesa supermercato\",\n  \"amount\": 45.50,\n  \"expense_owner_user_id\": 1,\n  \"expense_list_id\": 1,\n  \"expense_date\": \"2026-05-18T00:00:00\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/expenses",
+              "host": ["{{base_url}}"],
+              "path": ["api", "expenses"]
+            }
+          }
+        },
+        {
+          "name": "Delete expense by id",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/expenses/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "expenses", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
         }
       ]
     },
@@ -70,6 +173,61 @@
               "raw": "{{base_url}}/api/expenses-lists",
               "host": ["{{base_url}}"],
               "path": ["api", "expenses-lists"]
+            }
+          }
+        },
+        {
+          "name": "Get expenses list by id",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/expenses-lists/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "expenses-lists", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create expenses list",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Lista maggio\",\n  \"user_id\": 1,\n  \"paid\": false\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/expenses-lists",
+              "host": ["{{base_url}}"],
+              "path": ["api", "expenses-lists"]
+            }
+          }
+        },
+        {
+          "name": "Delete expenses list by id",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/expenses-lists/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "expenses-lists", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
             }
           }
         }
