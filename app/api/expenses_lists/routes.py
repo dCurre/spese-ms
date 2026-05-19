@@ -1,8 +1,10 @@
 from flask import abort, request, jsonify
 from datetime import datetime, timezone
+from sqlalchemy.orm import joinedload
 from app.api import api
 from app.database import db
 from app.database.expenses_list import ExpensesList
+from app.database.list_type import ListType
 
 @api.route('/expenses-lists', methods=['GET'])
 def get_expenses_lists():
@@ -10,7 +12,7 @@ def get_expenses_lists():
     query = ExpensesList.query
     if show_paid is not None:
         query = query.filter_by(paid=show_paid)
-    expenses_lists = query.order_by(ExpensesList.id).all()
+    expenses_lists = query.options(joinedload(ExpensesList.list_type)).order_by(ExpensesList.id).all()
     return jsonify({
         "expenses_lists": [
             {
@@ -19,6 +21,8 @@ def get_expenses_lists():
                 "user_id": el.user_id,
                 "paid": el.paid,
                 "created_at": el.created_at,
+                "list_type": el.list_type.name if el.list_type else "shared",
+                "max_participants": el.list_type.max_participants if el.list_type else 8,
             }
             for el in expenses_lists
         ]
@@ -26,13 +30,15 @@ def get_expenses_lists():
 
 @api.route('/expenses-lists/<int:list_id>', methods=['GET'])
 def get_expenses_list(list_id):
-    el = ExpensesList.query.get_or_404(list_id)
+    el = ExpensesList.query.options(joinedload(ExpensesList.list_type)).get_or_404(list_id)
     return jsonify({
         "id": el.id,
         "name": el.name,
         "user_id": el.user_id,
         "paid": el.paid,
         "created_at": el.created_at,
+        "list_type": el.list_type.name if el.list_type else "shared",
+        "max_participants": el.list_type.max_participants if el.list_type else 8,
         "participants": [
             {
                 "user_id": p.user_id,
@@ -48,28 +54,43 @@ def get_expenses_list(list_id):
 
 @api.route('/expenses-lists', methods=['POST'])
 def create_expenses_list():
-    data = request.get_json()
-    expenses_list = ExpensesList(
-        name=data.get('name'),
-        user_id=data['user_id'],
-        paid=data.get('paid', False),
-    )
-    db.session.add(expenses_list)
-    db.session.commit()
-    return jsonify({"id": expenses_list.id}), 201
+    try:
+        data = request.get_json()
+        type_name = data.get('list_type', 'shared')
+        list_type = ListType.query.filter_by(name=type_name).first()
+        expenses_list = ExpensesList(
+            name=data.get('name'),
+            user_id=data['user_id'],
+            paid=data.get('paid', False),
+            list_type_id=list_type.id if list_type else 1,
+        )
+        db.session.add(expenses_list)
+        db.session.commit()
+        return jsonify({"id": expenses_list.id, "message": "Lista creata"}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e), "code": 500}), 500
 
 @api.route('/expenses-lists/<int:list_id>', methods=['PUT'])
 def update_expenses_list(list_id):
-    el = ExpensesList.query.get_or_404(list_id)
-    data = request.get_json()
-    if 'name' in data: el.name = data['name']
-    if 'paid' in data: el.paid = data['paid']
-    db.session.commit()
-    return '', 204
+    try:
+        el = ExpensesList.query.get_or_404(list_id)
+        data = request.get_json()
+        if 'name' in data: el.name = data['name']
+        if 'paid' in data: el.paid = data['paid']
+        db.session.commit()
+        return jsonify({"message": "Lista aggiornata"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e), "code": 500}), 500
 
 @api.route('/expenses-lists/<int:list_id>', methods=['DELETE'])
 def delete_expenses_list(list_id):
-    expenses_list = ExpensesList.query.get_or_404(list_id)
-    db.session.delete(expenses_list)
-    db.session.commit()
-    return '', 204
+    try:
+        expenses_list = ExpensesList.query.get_or_404(list_id)
+        db.session.delete(expenses_list)
+        db.session.commit()
+        return jsonify({"message": "Lista eliminata"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e), "code": 500}), 500

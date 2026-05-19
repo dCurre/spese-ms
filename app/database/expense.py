@@ -21,6 +21,8 @@ class Expense(db.Model):
     expense_list_id = Column(Integer, nullable=False)
     expense_date = Column(DateTime, nullable=False)
     created_at = Column(TIMESTAMP, nullable=True, server_default=None)
+    expense_type_id = Column(BigInteger, ForeignKey('spese.expense_types.id'), nullable=True)
 
     user = relationship('User', backref=db.backref('expenses', cascade='all, delete-orphan'), foreign_keys='Expense.expense_owner_user_id')
     expenses_list = relationship('ExpensesList', backref=db.backref('expenses', cascade='all, delete-orphan'), foreign_keys='Expense.expense_list_id')
+    expense_type = relationship('ExpenseType', foreign_keys=[expense_type_id])

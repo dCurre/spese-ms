@@ -8,3 +8,13 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.13.3
+      - key: DATASOURCE_URL
+        sync: false
+      - key: DATASOURCE_PORT
+        sync: false
+      - key: DATASOURCE_DB_NAME
+        sync: false
+      - key: DATASOURCE_USERNAME
+        sync: false
+      - key: DATASOURCE_PASSWORD
+        sync: false
