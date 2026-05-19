@@ -26,23 +26,31 @@ def get_participants(list_id):
 
 @api.route('/expenses-lists/<int:list_id>/participants', methods=['POST'])
 def add_participant(list_id):
-    data = request.get_json()
-    participant = ExpensesListParticipant(
-        expenses_list_id=list_id,
-        user_id=data['user_id'],
-        joined_at=datetime.now(timezone.utc),
-    )
-    db.session.add(participant)
-    db.session.commit()
-    return '', 201
+    try:
+        data = request.get_json()
+        participant = ExpensesListParticipant(
+            expenses_list_id=list_id,
+            user_id=data['user_id'],
+            joined_at=datetime.now(timezone.utc),
+        )
+        db.session.add(participant)
+        db.session.commit()
+        return jsonify({"message": "Partecipante aggiunto"}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e), "code": 500}), 500
 
 
 @api.route('/expenses-lists/<int:list_id>/participants/<int:user_id>', methods=['DELETE'])
 def remove_participant(list_id, user_id):
-    participant = ExpensesListParticipant.query.filter_by(
-        expenses_list_id=list_id,
-        user_id=user_id
-    ).first_or_404()
-    db.session.delete(participant)
-    db.session.commit()
-    return '', 204
+    try:
+        participant = ExpensesListParticipant.query.filter_by(
+            expenses_list_id=list_id,
+            user_id=user_id
+        ).first_or_404()
+        db.session.delete(participant)
+        db.session.commit()
+        return jsonify({"message": "Partecipante rimosso"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e), "code": 500}), 500
