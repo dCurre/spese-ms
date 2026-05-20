@@ -15,3 +15,4 @@ class User(db.Model):
     created_at = Column(DateTime, nullable=True, server_default=None)
     role_id = Column(BigInteger, ForeignKey('spese.user_roles.id'), nullable=True, server_default='2')
     role = relationship('UserRole', foreign_keys=[role_id])
+    theme_preference = Column(String(20), nullable=True, default='auto')
