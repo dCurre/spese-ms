@@ -15,6 +15,7 @@ def user_to_dict(u):
         "email": u.email,
         "profile_image": u.profile_image,
         "paid_list_shown": u.paid_list_shown,
+        "theme_preference": u.theme_preference,
         "role": u.role.name if u.role else None,
     }
 
@@ -62,6 +63,7 @@ def get_user_expenses_lists_by_email(email):
                 "created_at": el.created_at,
                 "list_type": el.list_type.name if el.list_type else "shared",
                 "max_participants": el.list_type.max_participants if el.list_type else 8,
+                "expenses_count": len(el.expenses),
                 "participants": [
                     {
                         "user_id": p.user_id,
@@ -134,6 +136,7 @@ def update_user(user_id):
         if 'email' in data: u.email = data['email']
         if 'profile_image' in data: u.profile_image = data['profile_image']
         if 'paid_list_shown' in data: u.paid_list_shown = data['paid_list_shown']
+        if 'theme_preference' in data: u.theme_preference = data['theme_preference']
         if 'role_id' in data: u.role_id = data['role_id']
         db.session.commit()
         return jsonify({"message": "Utente aggiornato"}), 200
