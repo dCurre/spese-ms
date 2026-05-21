@@ -18,6 +18,7 @@ def get_participants(list_id):
                 "surname": p.user.surname,
                 "email": p.user.email,
                 "profile_image": p.user.profile_image,
+                "is_guest": bool(p.user.is_guest),
             }
             for p in participants
         ]
@@ -51,6 +52,35 @@ def remove_participant(list_id, user_id):
         db.session.delete(participant)
         db.session.commit()
         return jsonify({"message": "Partecipante rimosso"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e), "code": 500}), 500
+
+
+@api.route('/expenses-lists/<int:list_id>/participants/<int:user_id>/guest', methods=['DELETE'])
+def remove_guest_participant(list_id, user_id):
+    from app.database.user import User
+    from app.database.expense import Expense
+    try:
+        guest = User.query.filter_by(id=user_id, is_guest=True).first_or_404()
+
+        placeholder = User.query.filter_by(email='deleted@system.local').first()
+        if not placeholder:
+            return jsonify({"error": "Utente placeholder non trovato"}), 404
+
+        Expense.query.filter_by(
+            expense_list_id=list_id,
+            expense_owner_user_id=user_id
+        ).update({"expense_owner_user_id": placeholder.id})
+
+        participant = ExpensesListParticipant.query.filter_by(
+            expenses_list_id=list_id,
+            user_id=user_id
+        ).first_or_404()
+        db.session.delete(participant)
+        db.session.delete(guest)
+        db.session.commit()
+        return jsonify({"message": "Ospite rimosso"}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
