@@ -1,5 +1,6 @@
 import os
 import uuid
+import json
 from flask import abort, request, jsonify
 from sqlalchemy.orm import joinedload
 from supabase import create_client
@@ -8,6 +9,7 @@ from app.database import db
 from app.database.user import User
 from app.database.user_role import UserRole
 from app.database.expenses_list import ExpensesList
+from app.database.expenses_list_participant import ExpensesListParticipant
 
 def get_supabase():
     url = os.environ.get('SUPABASE_URL')
@@ -17,6 +19,28 @@ def get_supabase():
 BUCKET = os.environ.get('SUPABASE_STORAGE_BUCKET', 'profile-images')
 
 
+MAX_HISTORY = 4
+
+def _get_history(u) -> list:
+    try:
+        return json.loads(u.profile_images_history or '[]')
+    except Exception:
+        return []
+
+def _path_from_url(url: str) -> str | None:
+    """Estrae il path relativo al bucket dall'URL pubblico Supabase."""
+    marker = f"/object/public/{BUCKET}/"
+    idx = url.find(marker)
+    if idx == -1:
+        return None
+    return url[idx + len(marker):]
+
+def _delete_from_storage(supabase, path: str):
+    try:
+        supabase.storage.from_(BUCKET).remove([path])
+    except Exception:
+        pass
+
 def user_to_dict(u):
     return {
         "id": u.id,
@@ -24,9 +48,11 @@ def user_to_dict(u):
         "surname": u.surname,
         "email": u.email,
         "profile_image": u.profile_image,
+        "profile_images_history": _get_history(u),
         "paid_list_shown": u.paid_list_shown,
         "theme_preference": u.theme_preference,
         "role": u.role.name if u.role else None,
+        "is_guest": bool(u.is_guest),
     }
 
 
@@ -55,9 +81,17 @@ def get_user_by_email(email):
 @api.route('/users/by-email/<string:email>/expenses-lists', methods=['GET'])
 def get_user_expenses_lists_by_email(email):
     u = user_query().filter_by(email=email).first_or_404()
+    participated_ids = (
+        db.session.query(ExpensesListParticipant.expenses_list_id)
+        .filter_by(user_id=u.id)
+        .subquery()
+    )
     expenses_lists = (
         ExpensesList.query
-        .filter_by(user_id=u.id)
+        .filter(
+            (ExpensesList.user_id == u.id) |
+            ExpensesList.id.in_(participated_ids)
+        )
         .options(joinedload(ExpensesList.list_type))
         .order_by(ExpensesList.id)
         .all()
@@ -82,6 +116,7 @@ def get_user_expenses_lists_by_email(email):
                         "email": p.user.email,
                         "profile_image": p.user.profile_image,
                         "joined_at": p.joined_at,
+                        "is_guest": bool(p.user.is_guest),
                     }
                     for p in el.participants
                 ]
@@ -113,22 +148,64 @@ def upload_profile_image(user_id):
         content_type = file.content_type or f"image/{ext}"
 
         supabase = get_supabase()
-        print(f"[upload] bucket={BUCKET} path={path} content_type={content_type} size={len(file_bytes)}")
         supabase.storage.from_(BUCKET).upload(
             path, file_bytes, {"content-type": content_type, "upsert": "true"}
         )
-
         public_url = supabase.storage.from_(BUCKET).get_public_url(path)
-        print(f"[upload] public_url={public_url}")
 
         u = User.query.get_or_404(user_id)
+        history = _get_history(u)
+
+        # Preserva la foto corrente nello storico se non è già presente
+        if u.profile_image and u.profile_image not in history:
+            history.append(u.profile_image)
+
+        # Aggiungi la nuova URL in cima allo storico
+        if public_url not in history:
+            history.insert(0, public_url)
+
+        # Se supera MAX_HISTORY, elimina le più vecchie dal bucket
+        while len(history) > MAX_HISTORY:
+            old_url = history.pop()
+            old_path = _path_from_url(old_url)
+            if old_path:
+                _delete_from_storage(supabase, old_path)
+
         u.profile_image = public_url
+        u.profile_images_history = json.dumps(history)
         db.session.commit()
 
-        return jsonify({"url": public_url}), 200
+        return jsonify({"url": public_url, "history": history}), 200
     except Exception as e:
-        import traceback
-        print(f"[upload] ERROR: {traceback.format_exc()}")
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+@api.route('/users/<int:user_id>/profile-image/select', methods=['PUT'])
+def select_profile_image(user_id):
+    """Imposta come foto attiva una già presente nello storico."""
+    try:
+        data = request.get_json()
+        url = data.get('url', '').strip()
+        if not url:
+            return jsonify({"error": "URL mancante"}), 400
+
+        u = User.query.get_or_404(user_id)
+        history = _get_history(u)
+
+        if url not in history:
+            return jsonify({"error": "Immagine non presente nello storico"}), 404
+
+        # Porta la foto selezionata in cima
+        history.remove(url)
+        history.insert(0, url)
+
+        u.profile_image = url
+        u.profile_images_history = json.dumps(history)
+        db.session.commit()
+
+        return jsonify({"url": url, "history": history}), 200
+    except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
@@ -139,10 +216,11 @@ def create_user():
         data = request.get_json()
         user = User(
             name=data.get('name'),
-            surname=data.get('surname'),
+            surname=data.get('surname') or '',
             email=data.get('email'),
             profile_image=data.get('profile_image'),
             paid_list_shown=data.get('paid_list_shown', True),
+            is_guest=data.get('is_guest', False),
         )
         db.session.add(user)
         db.session.commit()

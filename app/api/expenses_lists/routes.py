@@ -47,6 +47,7 @@ def get_expenses_list(list_id):
                 "email": p.user.email,
                 "profile_image": p.user.profile_image,
                 "joined_at": p.joined_at,
+                "is_guest": bool(p.user.is_guest),
             }
             for p in el.participants
         ]
@@ -83,6 +84,46 @@ def update_expenses_list(list_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
+
+@api.route('/expenses-lists/<int:list_id>/transfer-owner', methods=['POST'])
+def transfer_owner(list_id):
+    try:
+        data = request.get_json()
+        new_owner_id = data.get('new_owner_id')
+        current_owner_id = data.get('current_owner_id')
+        if not new_owner_id or not current_owner_id:
+            return jsonify({"error": "Parametri mancanti"}), 400
+
+        el = ExpensesList.query.get_or_404(list_id)
+        if el.user_id != current_owner_id:
+            return jsonify({"error": "Non sei il proprietario della lista"}), 403
+
+        from app.database.expenses_list_participant import ExpensesListParticipant
+        from app.database.user import User as UserModel
+        new_owner = UserModel.query.get(new_owner_id)
+        if not new_owner or new_owner.is_guest:
+            return jsonify({"error": "Un ospite non può essere proprietario di una lista"}), 400
+
+        is_participant = ExpensesListParticipant.query.filter_by(
+            expenses_list_id=list_id, user_id=new_owner_id
+        ).first()
+        if not is_participant:
+            return jsonify({"error": "Il nuovo owner deve essere un partecipante"}), 400
+
+        el.user_id = new_owner_id
+
+        old_owner = ExpensesListParticipant.query.filter_by(
+            expenses_list_id=list_id, user_id=current_owner_id
+        ).first()
+        if old_owner:
+            db.session.delete(old_owner)
+
+        db.session.commit()
+        return jsonify({"message": "Ownership trasferita"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e), "code": 500}), 500
+
 
 @api.route('/expenses-lists/<int:list_id>', methods=['DELETE'])
 def delete_expenses_list(list_id):
