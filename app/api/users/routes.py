@@ -1,10 +1,20 @@
+import os
+import uuid
 from flask import abort, request, jsonify
 from sqlalchemy.orm import joinedload
+from supabase import create_client
 from app.api import api
 from app.database import db
 from app.database.user import User
 from app.database.user_role import UserRole
 from app.database.expenses_list import ExpensesList
+
+def get_supabase():
+    url = os.environ.get('SUPABASE_URL')
+    key = os.environ.get('SUPABASE_KEY')
+    return create_client(url, key)
+
+BUCKET = os.environ.get('SUPABASE_STORAGE_BUCKET', 'profile-images')
 
 
 def user_to_dict(u):
@@ -79,6 +89,48 @@ def get_user_expenses_lists_by_email(email):
             for el in expenses_lists
         ]
     })
+
+
+@api.route('/users/<int:user_id>/profile-image', methods=['POST'])
+def upload_profile_image(user_id):
+    try:
+        if 'file' not in request.files:
+            return jsonify({"error": "Nessun file ricevuto"}), 400
+
+        file = request.files['file']
+        if not file.filename:
+            return jsonify({"error": "Nome file mancante"}), 400
+
+        ext = file.filename.rsplit('.', 1)[-1].lower()
+        if ext not in ('jpg', 'jpeg', 'png', 'webp', 'gif'):
+            return jsonify({"error": "Formato non supportato"}), 400
+
+        file_bytes = file.read()
+        if len(file_bytes) > 5 * 1024 * 1024:
+            return jsonify({"error": "File troppo grande (max 5MB)"}), 400
+
+        path = f"{user_id}/{uuid.uuid4().hex}.{ext}"
+        content_type = file.content_type or f"image/{ext}"
+
+        supabase = get_supabase()
+        print(f"[upload] bucket={BUCKET} path={path} content_type={content_type} size={len(file_bytes)}")
+        supabase.storage.from_(BUCKET).upload(
+            path, file_bytes, {"content-type": content_type, "upsert": "true"}
+        )
+
+        public_url = supabase.storage.from_(BUCKET).get_public_url(path)
+        print(f"[upload] public_url={public_url}")
+
+        u = User.query.get_or_404(user_id)
+        u.profile_image = public_url
+        db.session.commit()
+
+        return jsonify({"url": public_url}), 200
+    except Exception as e:
+        import traceback
+        print(f"[upload] ERROR: {traceback.format_exc()}")
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
 
 
 @api.route('/users', methods=['POST'])
