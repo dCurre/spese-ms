@@ -84,7 +84,6 @@ def get_user_expenses_lists_by_email(email):
     participated_ids = (
         db.session.query(ExpensesListParticipant.expenses_list_id)
         .filter_by(user_id=u.id)
-        .subquery()
     )
     expenses_lists = (
         ExpensesList.query
