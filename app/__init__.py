@@ -21,6 +21,7 @@ def create_app():
         from app.database.expenses_list import ExpensesList
         from app.database.expense import Expense
         from app.database.expenses_list_participant import ExpensesListParticipant
+        from app.database.shopping_list import ShoppingList, ShoppingItem, ShoppingListParticipant
 
     app.register_blueprint(api, url_prefix='/api')
 
