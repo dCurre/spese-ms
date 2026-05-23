@@ -74,12 +74,16 @@ def get_user(user_id):
 
 @api.route('/users/by-email/<string:email>', methods=['GET'])
 def get_user_by_email(email):
+    from urllib.parse import unquote
+    email = unquote(email)
     u = user_query().filter_by(email=email).first_or_404()
     return jsonify(user_to_dict(u))
 
 
 @api.route('/users/by-email/<string:email>/expenses-lists', methods=['GET'])
 def get_user_expenses_lists_by_email(email):
+    from urllib.parse import unquote
+    email = unquote(email)
     u = user_query().filter_by(email=email).first_or_404()
     participated_ids = (
         db.session.query(ExpensesListParticipant.expenses_list_id)
