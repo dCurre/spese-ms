@@ -4,7 +4,8 @@ from flask.cli import load_dotenv
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 
-if os.environ.get("RENDER") != "true":
+# Load .env only in local development (not on Vercel or other cloud platforms)
+if not os.environ.get("VERCEL") and not os.environ.get("RENDER"):
     load_dotenv()
 
 class Config:
@@ -17,3 +18,10 @@ class Config:
         f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    # Serverless-friendly pool settings
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "pool_pre_ping": True,
+        "pool_recycle": 300,
+        "pool_size": 5,
+        "max_overflow": 2,
+    }
