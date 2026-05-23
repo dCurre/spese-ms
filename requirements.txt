@@ -4,5 +4,4 @@ Flask-SQLAlchemy==3.1.1
 SQLAlchemy==2.0.40
 psycopg2-binary==2.9.10
 python-dotenv==1.1.0
-gunicorn==23.0.0
 supabase==2.15.2
