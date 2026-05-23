@@ -14,3 +14,7 @@ def debug():
         "script_name": request.environ.get('SCRIPT_NAME'),
         "registered_routes": sorted(routes),
     })
+
+@app.route('/debug/email/<string:email>')
+def debug_email(email):
+    return jsonify({"received_email": email, "path": request.path})
