@@ -80,6 +80,36 @@ def get_user_by_email(email):
     return jsonify(user_to_dict(u))
 
 
+@api.route('/users/upsert-by-email', methods=['POST'])
+def upsert_user_by_email():
+    """Ritorna l'utente se esiste, altrimenti lo crea. Usato al login con Google."""
+    try:
+        data = request.get_json()
+        email = data.get('email', '').strip()
+        if not email:
+            return jsonify({"error": "email obbligatoria"}), 400
+
+        u = user_query().filter_by(email=email).first()
+        if u:
+            return jsonify(user_to_dict(u)), 200
+
+        u = User(
+            name=data.get('name', ''),
+            surname=data.get('surname', '') or '',
+            email=email,
+            profile_image=data.get('profile_image', ''),
+            paid_list_shown=True,
+            is_guest=False,
+        )
+        db.session.add(u)
+        db.session.commit()
+        u = user_query().filter_by(email=email).first()
+        return jsonify(user_to_dict(u)), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e), "code": 500}), 500
+
+
 @api.route('/users/by-email/<string:email>/expenses-lists', methods=['GET'])
 def get_user_expenses_lists_by_email(email):
     from urllib.parse import unquote

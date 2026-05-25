@@ -1,6 +1,5 @@
-from sqlalchemy import Column, BigInteger, String, Boolean, TIMESTAMP, ForeignKey, Integer, Text
+from sqlalchemy import Column, BigInteger, String, Boolean, TIMESTAMP, ForeignKey, Integer
 from sqlalchemy.orm import relationship
-
 from app.database import db
 
 
@@ -19,7 +18,22 @@ class ShoppingList(db.Model):
 
     owner = relationship('User', foreign_keys=[owner_id])
     items = relationship('ShoppingItem', back_populates='shopping_list', cascade='all, delete-orphan')
+    categories = relationship('ShoppingCategory', back_populates='shopping_list', cascade='all, delete-orphan')
     participants = relationship('ShoppingListParticipant', back_populates='shopping_list', cascade='all, delete-orphan')
+
+
+class ShoppingCategory(db.Model):
+    __tablename__ = 'shopping_categories'
+    __table_args__ = {'schema': 'spese'}
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    shopping_list_id = Column(BigInteger, ForeignKey('spese.shopping_lists.id'), nullable=False)
+    name = Column(String(255), nullable=False)
+    sort_order = Column(Integer, nullable=False, server_default='0')
+    created_at = Column(TIMESTAMP, nullable=False, server_default='now()')
+
+    shopping_list = relationship('ShoppingList', back_populates='categories')
+    items = relationship('ShoppingItem', back_populates='category', cascade='all, delete-orphan')
 
 
 class ShoppingItem(db.Model):
@@ -28,6 +42,7 @@ class ShoppingItem(db.Model):
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     shopping_list_id = Column(BigInteger, ForeignKey('spese.shopping_lists.id'), nullable=False)
+    category_id = Column(BigInteger, ForeignKey('spese.shopping_categories.id'), nullable=True)
     name = Column(String(255), nullable=False)
     quantity = Column(Integer, nullable=True)
     checked = Column(Boolean, nullable=False, server_default='false')
@@ -35,6 +50,7 @@ class ShoppingItem(db.Model):
     created_at = Column(TIMESTAMP, nullable=False, server_default='now()')
 
     shopping_list = relationship('ShoppingList', back_populates='items')
+    category = relationship('ShoppingCategory', back_populates='items')
 
 
 class ShoppingListParticipant(db.Model):
