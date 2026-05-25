@@ -1,3 +1,4 @@
+import traceback
 from flask import request, jsonify
 from datetime import datetime, timezone
 from app.api import api
@@ -38,6 +39,7 @@ def add_participant(list_id):
         db.session.commit()
         return jsonify({"message": "Partecipante aggiunto"}), 201
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -53,6 +55,7 @@ def remove_participant(list_id, user_id):
         db.session.commit()
         return jsonify({"message": "Partecipante rimosso"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -82,5 +85,6 @@ def remove_guest_participant(list_id, user_id):
         db.session.commit()
         return jsonify({"message": "Ospite rimosso"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500

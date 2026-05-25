@@ -1,3 +1,4 @@
+import traceback
 from flask import request, jsonify
 from app.api import api
 from app.database import db
@@ -24,6 +25,7 @@ def create_expense_type():
         db.session.commit()
         return jsonify({"id": t.id, "message": "Tipologia creata"}), 201
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -38,6 +40,7 @@ def update_expense_type(type_id):
         db.session.commit()
         return jsonify({"message": "Tipologia aggiornata"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -52,5 +55,6 @@ def delete_expense_type(type_id):
         db.session.commit()
         return jsonify({"message": "Tipologia eliminata"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500

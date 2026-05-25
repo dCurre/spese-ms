@@ -1,6 +1,7 @@
 import os
 import uuid
 import json
+import traceback
 from flask import abort, request, jsonify
 from sqlalchemy.orm import joinedload
 from supabase import create_client
@@ -14,6 +15,8 @@ from app.database.expenses_list_participant import ExpensesListParticipant
 def get_supabase():
     url = os.environ.get('SUPABASE_URL')
     key = os.environ.get('SUPABASE_KEY')
+    if not url or not key:
+        raise RuntimeError("SUPABASE_URL e SUPABASE_KEY non configurati")
     return create_client(url, key)
 
 BUCKET = os.environ.get('SUPABASE_STORAGE_BUCKET', 'profile-images')
@@ -106,6 +109,7 @@ def upsert_user_by_email():
         u = user_query().filter_by(email=email).first()
         return jsonify(user_to_dict(u)), 201
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -210,6 +214,7 @@ def upload_profile_image(user_id):
 
         return jsonify({"url": public_url, "history": history}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
@@ -239,6 +244,7 @@ def select_profile_image(user_id):
 
         return jsonify({"url": url, "history": history}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
@@ -259,6 +265,7 @@ def create_user():
         db.session.commit()
         return jsonify({"id": user.id, "message": "Utente creato"}), 201
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -304,6 +311,7 @@ def update_user(user_id):
         db.session.commit()
         return jsonify({"message": "Utente aggiornato"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -316,5 +324,6 @@ def delete_user(user_id):
         db.session.commit()
         return jsonify({"message": "Utente eliminato"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500

@@ -1,4 +1,5 @@
 import secrets
+import traceback
 from flask import request, jsonify
 from sqlalchemy.orm import joinedload
 from app.api import api
@@ -137,6 +138,7 @@ def create_shopping_list():
         db.session.commit()
         return jsonify({"id": sl.id, "message": "Checklist creata"}), 201
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -153,6 +155,7 @@ def update_shopping_list(list_id):
         db.session.commit()
         return jsonify({"message": "Checklist aggiornata"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -165,6 +168,7 @@ def delete_shopping_list(list_id):
         db.session.commit()
         return jsonify({"message": "Checklist eliminata"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -178,6 +182,7 @@ def generate_invite_token(list_id):
             db.session.commit()
         return jsonify({"invite_token": sl.invite_token}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -190,6 +195,7 @@ def revoke_invite_token(list_id):
         db.session.commit()
         return jsonify({"message": "Link revocato"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -216,6 +222,7 @@ def join_by_token(token):
 
         return jsonify({"id": sl.id, "message": "Aggiunto alla lista"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -246,6 +253,7 @@ def transfer_ownership(list_id):
         db.session.commit()
         return jsonify({"message": "Ownership trasferita"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -267,6 +275,7 @@ def add_shopping_list_participant(list_id):
         db.session.commit()
         return jsonify({"message": "Partecipante aggiunto"}), 201
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -371,6 +380,8 @@ def batch_save_list(list_id):
                 item.quantity = _norm_qty(upd['quantity'])
             if 'checked' in upd:
                 item.checked = upd['checked']
+            if 'category_id' in upd:
+                item.category_id = upd['category_id']
 
         # 6. Crea nuovi item
         for ni in (data.get('items_create') or []):
@@ -393,6 +404,7 @@ def batch_save_list(list_id):
         db.session.commit()
         return jsonify({"message": "Batch salvato"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -407,5 +419,6 @@ def remove_shopping_list_participant(list_id, user_id):
         db.session.commit()
         return jsonify({"message": "Partecipante rimosso"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500

@@ -1,3 +1,4 @@
+import traceback
 from flask import request, jsonify
 from app.api import api
 from app.database import db
@@ -27,6 +28,7 @@ def create_user_role():
         db.session.commit()
         return jsonify({"id": role.id, "message": "Ruolo creato"}), 201
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -43,6 +45,7 @@ def update_user_role(role_id):
         db.session.commit()
         return jsonify({"message": "Ruolo aggiornato"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -57,5 +60,6 @@ def delete_user_role(role_id):
         db.session.commit()
         return jsonify({"message": "Ruolo eliminato"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500

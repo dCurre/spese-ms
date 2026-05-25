@@ -1,3 +1,4 @@
+import traceback
 from flask import request, jsonify
 from app.api import api
 from app.database import db
@@ -26,6 +27,7 @@ def create_shopping_category():
         db.session.commit()
         return jsonify({"id": cat.id, "message": "Categoria creata"}), 201
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -41,6 +43,7 @@ def update_shopping_category(category_id):
         db.session.commit()
         return jsonify({"message": "Categoria aggiornata"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -53,6 +56,7 @@ def delete_shopping_category(category_id):
         db.session.commit()
         return jsonify({"message": "Categoria eliminata"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -68,5 +72,6 @@ def check_category(category_id):
         db.session.commit()
         return jsonify({"message": "Categoria aggiornata", "checked": checked}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500

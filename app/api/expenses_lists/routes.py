@@ -1,3 +1,4 @@
+import traceback
 from flask import abort, request, jsonify
 from datetime import datetime, timezone
 from sqlalchemy.orm import joinedload
@@ -69,6 +70,7 @@ def create_expenses_list():
         db.session.commit()
         return jsonify({"id": expenses_list.id, "message": "Lista creata"}), 201
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -82,6 +84,7 @@ def update_expenses_list(list_id):
         db.session.commit()
         return jsonify({"message": "Lista aggiornata"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -121,6 +124,7 @@ def transfer_owner(list_id):
         db.session.commit()
         return jsonify({"message": "Ownership trasferita"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -133,5 +137,6 @@ def delete_expenses_list(list_id):
         db.session.commit()
         return jsonify({"message": "Lista eliminata"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
