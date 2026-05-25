@@ -3,11 +3,11 @@ from flask import request, jsonify
 from sqlalchemy.orm import joinedload
 from app.api import api
 from app.database import db
-from app.database.shopping_list import ShoppingList, ShoppingItem, ShoppingListParticipant
+from app.database.shopping_list import ShoppingList, ShoppingItem, ShoppingCategory, ShoppingListParticipant
 
 
 def _serialize_list(sl, include_items=False):
-    items = sorted(sl.items or [], key=lambda i: i.sort_order)
+    all_items = sl.items or []
     data = {
         "id": sl.id,
         "name": sl.name,
@@ -17,8 +17,8 @@ def _serialize_list(sl, include_items=False):
         "starred": sl.starred,
         "invite_token": sl.invite_token,
         "created_at": sl.created_at,
-        "items_count": len(items),
-        "checked_count": sum(1 for i in items if i.checked),
+        "items_count": len(all_items),
+        "checked_count": sum(1 for i in all_items if i.checked),
         "participants": (
             [
                 {
@@ -45,17 +45,48 @@ def _serialize_list(sl, include_items=False):
         ],
     }
     if include_items:
+        # Serializza categorie con i loro item
+        categories = sorted(sl.categories or [], key=lambda c: c.sort_order)
+        data["categories"] = [
+            {
+                "id": c.id,
+                "shopping_list_id": c.shopping_list_id,
+                "name": c.name,
+                "sort_order": c.sort_order,
+                "created_at": c.created_at,
+                "items": [
+                    {
+                        "id": i.id,
+                        "shopping_list_id": i.shopping_list_id,
+                        "category_id": i.category_id,
+                        "name": i.name,
+                        "quantity": i.quantity,
+                        "checked": i.checked,
+                        "sort_order": i.sort_order,
+                        "created_at": i.created_at,
+                    }
+                    for i in sorted(c.items, key=lambda i: i.sort_order)
+                ],
+            }
+            for c in categories
+        ]
+        # Item senza categoria
+        uncategorized = sorted(
+            [i for i in all_items if i.category_id is None],
+            key=lambda i: i.sort_order
+        )
         data["items"] = [
             {
                 "id": i.id,
                 "shopping_list_id": i.shopping_list_id,
+                "category_id": None,
                 "name": i.name,
                 "quantity": i.quantity,
                 "checked": i.checked,
                 "sort_order": i.sort_order,
                 "created_at": i.created_at,
             }
-            for i in items
+            for i in uncategorized
         ]
     return data
 
@@ -65,6 +96,7 @@ def get_shopping_lists_by_user(user_id):
     owned = ShoppingList.query.options(
         joinedload(ShoppingList.owner),
         joinedload(ShoppingList.items),
+        joinedload(ShoppingList.categories).joinedload(ShoppingCategory.items),
         joinedload(ShoppingList.participants).joinedload(ShoppingListParticipant.user)
     ).filter_by(owner_id=user_id).all()
 
@@ -72,6 +104,7 @@ def get_shopping_lists_by_user(user_id):
     shared = ShoppingList.query.options(
         joinedload(ShoppingList.owner),
         joinedload(ShoppingList.items),
+        joinedload(ShoppingList.categories).joinedload(ShoppingCategory.items),
         joinedload(ShoppingList.participants).joinedload(ShoppingListParticipant.user)
     ).filter(ShoppingList.id.in_(shared_ids), ShoppingList.owner_id != user_id).all()
 
@@ -84,6 +117,7 @@ def get_shopping_list(list_id):
     sl = ShoppingList.query.options(
         joinedload(ShoppingList.owner),
         joinedload(ShoppingList.items),
+        joinedload(ShoppingList.categories).joinedload(ShoppingCategory.items),
         joinedload(ShoppingList.participants).joinedload(ShoppingListParticipant.user)
     ).get_or_404(list_id)
     return jsonify(_serialize_list(sl, include_items=True))

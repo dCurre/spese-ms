@@ -14,6 +14,7 @@ def create_shopping_item():
             quantity=data.get('quantity'),
             checked=data.get('checked', False),
             sort_order=data.get('sort_order', 0),
+            category_id=data.get('category_id'),
         )
         db.session.add(item)
         db.session.commit()
@@ -32,6 +33,7 @@ def update_shopping_item(item_id):
         if 'quantity' in data: item.quantity = data['quantity']
         if 'checked' in data: item.checked = data['checked']
         if 'sort_order' in data: item.sort_order = data['sort_order']
+        if 'category_id' in data: item.category_id = data['category_id']
         db.session.commit()
         return jsonify({"message": "Articolo aggiornato"}), 200
     except Exception as e:

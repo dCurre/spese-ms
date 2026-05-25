@@ -13,3 +13,4 @@ from app.api.user_roles import routes
 from app.api.expense_types import routes
 from app.api.shopping_lists import routes
 from app.api.shopping_items import routes
+from app.api.shopping_categories import routes
