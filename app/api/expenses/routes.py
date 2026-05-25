@@ -1,3 +1,4 @@
+import traceback
 from flask import abort, request, jsonify
 from datetime import datetime, timezone
 from sqlalchemy.orm import joinedload
@@ -69,6 +70,7 @@ def create_expense():
         db.session.commit()
         return jsonify({"id": expense.id, "message": "Spesa creata"}), 201
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -88,6 +90,7 @@ def update_expense(expense_id):
         db.session.commit()
         return jsonify({"message": "Spesa aggiornata"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -106,5 +109,6 @@ def delete_expense(expense_id):
         db.session.commit()
         return jsonify({"message": "Spesa eliminata"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500

@@ -1,8 +1,16 @@
-from flask import Flask
+import traceback
+import logging
+from flask import Flask, jsonify, request
 from app.api import api
 from app.database import db
 from config import Config
 from flask_cors import CORS
+
+logging.basicConfig(
+    level=logging.ERROR,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+)
+logger = logging.getLogger(__name__)
 
 def create_app():
     app = Flask(__name__)
@@ -12,6 +20,11 @@ def create_app():
     app.config.from_object(Config)
 
     db.init_app(app)
+
+    @app.errorhandler(Exception)
+    def handle_unhandled_exception(e):
+        logger.error("Unhandled exception on %s %s\n%s", request.method, request.path, traceback.format_exc())
+        return jsonify({"error": str(e)}), 500
 
     with app.app_context():
         from app.database.list_type import ListType

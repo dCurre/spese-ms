@@ -1,3 +1,4 @@
+import traceback
 from flask import request, jsonify
 from app.api import api
 from app.database import db
@@ -31,6 +32,7 @@ def create_shopping_item():
         db.session.commit()
         return jsonify({"id": item.id, "message": "Articolo aggiunto"}), 201
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -48,6 +50,7 @@ def update_shopping_item(item_id):
         db.session.commit()
         return jsonify({"message": "Articolo aggiornato"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -61,6 +64,7 @@ def toggle_shopping_item(item_id):
         db.session.commit()
         return jsonify({"message": "Stato aggiornato", "checked": item.checked}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -73,6 +77,7 @@ def delete_shopping_item(item_id):
         db.session.commit()
         return jsonify({"message": "Articolo eliminato"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -100,6 +105,7 @@ def bulk_update_items():
         db.session.commit()
         return jsonify({"message": "Aggiornamento completato"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -118,6 +124,7 @@ def check_all_items():
         db.session.commit()
         return jsonify({"message": "Articoli aggiornati"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
 
@@ -134,5 +141,6 @@ def reorder_shopping_items():
         db.session.commit()
         return jsonify({"message": "Ordine aggiornato"}), 200
     except Exception as e:
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
