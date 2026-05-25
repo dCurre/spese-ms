@@ -4,6 +4,17 @@ from app.database import db
 from app.database.shopping_list import ShoppingItem
 
 
+def _norm_qty(value):
+    """Normalizza la quantity: None/null → 1, valori ≤ 0 → 1, altrimenti intero."""
+    if value is None:
+        return 1
+    try:
+        v = int(value)
+        return v if v > 0 else 1
+    except (TypeError, ValueError):
+        return 1
+
+
 @api.route('/shopping-items', methods=['POST'])
 def create_shopping_item():
     try:
@@ -11,7 +22,7 @@ def create_shopping_item():
         item = ShoppingItem(
             shopping_list_id=data['shopping_list_id'],
             name=data['name'],
-            quantity=data.get('quantity'),
+            quantity=_norm_qty(data.get('quantity')),
             checked=data.get('checked', False),
             sort_order=data.get('sort_order', 0),
             category_id=data.get('category_id'),
@@ -30,7 +41,7 @@ def update_shopping_item(item_id):
         item = ShoppingItem.query.get_or_404(item_id)
         data = request.get_json()
         if 'name' in data: item.name = data['name']
-        if 'quantity' in data: item.quantity = data['quantity']
+        if 'quantity' in data: item.quantity = _norm_qty(data['quantity'])
         if 'checked' in data: item.checked = data['checked']
         if 'sort_order' in data: item.sort_order = data['sort_order']
         if 'category_id' in data: item.category_id = data['category_id']
@@ -78,7 +89,7 @@ def bulk_update_items():
             if not item:
                 continue
             if 'name' in u: item.name = u['name']
-            if 'quantity' in u: item.quantity = u['quantity']
+            if 'quantity' in u: item.quantity = _norm_qty(u['quantity'])
             if 'checked' in u: item.checked = u['checked']
 
         for item_id in delete_ids:
@@ -99,7 +110,11 @@ def check_all_items():
         data = request.get_json()
         list_id = data.get('shopping_list_id')
         checked = data.get('checked', True)
-        ShoppingItem.query.filter_by(shopping_list_id=list_id).update({'checked': checked})
+        uncategorized_only = data.get('uncategorized_only', False)
+        query = ShoppingItem.query.filter_by(shopping_list_id=list_id)
+        if uncategorized_only:
+            query = query.filter(ShoppingItem.category_id == None)
+        query.update({'checked': checked})
         db.session.commit()
         return jsonify({"message": "Articoli aggiornati"}), 200
     except Exception as e:
