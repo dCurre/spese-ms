@@ -28,12 +28,15 @@ class ShoppingCategory(db.Model):
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     shopping_list_id = Column(BigInteger, ForeignKey('spese.shopping_lists.id'), nullable=False)
+    parent_id = Column(BigInteger, ForeignKey('spese.shopping_categories.id'), nullable=True)
     name = Column(String(255), nullable=False)
     sort_order = Column(Integer, nullable=False, server_default='0')
     created_at = Column(TIMESTAMP, nullable=False, server_default='now()')
 
     shopping_list = relationship('ShoppingList', back_populates='categories')
     items = relationship('ShoppingItem', back_populates='category', cascade='all, delete-orphan')
+    children = relationship('ShoppingCategory', back_populates='parent', cascade='all, delete-orphan')
+    parent = relationship('ShoppingCategory', back_populates='children', remote_side='ShoppingCategory.id')
 
 
 class ShoppingItem(db.Model):
