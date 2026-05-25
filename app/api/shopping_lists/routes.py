@@ -4,6 +4,7 @@ from sqlalchemy.orm import joinedload
 from app.api import api
 from app.database import db
 from app.database.shopping_list import ShoppingList, ShoppingItem, ShoppingCategory, ShoppingListParticipant
+from app.api.shopping_items.routes import _norm_qty
 
 
 def _serialize_item(i):
@@ -265,6 +266,132 @@ def add_shopping_list_participant(list_id):
         db.session.add(p)
         db.session.commit()
         return jsonify({"message": "Partecipante aggiunto"}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e), "code": 500}), 500
+
+
+@api.route('/shopping-lists/<int:list_id>/batch-save', methods=['POST'])
+def batch_save_list(list_id):
+    """
+    Salva in un'unica transazione tutte le modifiche della modifica multipla:
+    - categories_update: [{id, name}]
+    - categories_delete: [id, ...]
+    - categories_create: [{temp_id, name, parent_id, sort_order}]
+      parent_id può essere un id reale oppure un temp_id (stringa) se il parent è anch'esso nuovo
+    - items_update: [{id, name, quantity, checked}]
+    - items_delete: [id, ...]
+    - items_create: [{name, quantity, checked, sort_order, category_id, category_temp_id}]
+      category_temp_id usato se l'item appartiene a una categoria nuova (creata nello stesso batch)
+    """
+    try:
+        ShoppingList.query.get_or_404(list_id)
+        data = request.get_json()
+
+        # Mappa temp_id → id reale per le nuove categorie
+        temp_id_map = {}
+
+        # 1. Elimina categorie (cascade sugli item grazie a FK)
+        for cat_id in (data.get('categories_delete') or []):
+            cat = ShoppingCategory.query.get(cat_id)
+            if cat:
+                db.session.delete(cat)
+        db.session.flush()
+
+        # 2. Aggiorna nome categorie esistenti
+        for upd in (data.get('categories_update') or []):
+            cat = ShoppingCategory.query.get(upd['id'])
+            if cat and upd.get('name', '').strip():
+                cat.name = upd['name'].strip()
+
+        # 3. Crea nuove categorie (in ordine: prima i root, poi le sub con parent reale)
+        #    Supporta parent_id come temp_id stringa o come id intero reale
+        new_cats = data.get('categories_create') or []
+
+        # Set degli id eliminati in questo batch (per non usarli come parent)
+        deleted_cat_ids = set(data.get('categories_delete') or [])
+
+        def _resolve_pid(pid):
+            """Risolve il parent_id: stringa temp → id reale, intero → intero (o None se eliminato)."""
+            if pid is None:
+                return None
+            if isinstance(pid, str):
+                return temp_id_map.get(pid)  # None se non ancora creato
+            # intero: id reale — sicuro solo se non è stato eliminato in questo batch
+            if isinstance(pid, int):
+                return None if pid in deleted_cat_ids else pid
+            return None
+
+        def _parent_is_resolved(nc):
+            pid = nc.get('parent_id')
+            if pid is None:
+                return True
+            if isinstance(pid, int):
+                return True  # id reale: risolto subito (anche se eliminato → diventa None)
+            # stringa temp_id: risolto solo se già nel map
+            return str(pid) in temp_id_map
+
+        max_iter = len(new_cats) + 1
+        remaining = list(new_cats)
+        iteration = 0
+        while remaining and iteration < max_iter:
+            iteration += 1
+            next_remaining = []
+            for nc in remaining:
+                if not _parent_is_resolved(nc):
+                    next_remaining.append(nc)
+                    continue
+                pid = _resolve_pid(nc.get('parent_id'))
+                cat = ShoppingCategory(
+                    shopping_list_id=list_id,
+                    parent_id=pid,
+                    name=nc['name'].strip(),
+                    sort_order=nc.get('sort_order', 0),
+                )
+                db.session.add(cat)
+                db.session.flush()  # ottieni l'id
+                if nc.get('temp_id') is not None:
+                    temp_id_map[str(nc['temp_id'])] = cat.id
+            remaining = next_remaining
+
+        # 4. Elimina item
+        for item_id in (data.get('items_delete') or []):
+            item = ShoppingItem.query.get(item_id)
+            if item:
+                db.session.delete(item)
+
+        # 5. Aggiorna item esistenti
+        for upd in (data.get('items_update') or []):
+            item = ShoppingItem.query.get(upd['id'])
+            if not item:
+                continue
+            if 'name' in upd and upd['name'].strip():
+                item.name = upd['name'].strip()
+            if 'quantity' in upd:
+                item.quantity = _norm_qty(upd['quantity'])
+            if 'checked' in upd:
+                item.checked = upd['checked']
+
+        # 6. Crea nuovi item
+        for ni in (data.get('items_create') or []):
+            cat_id = ni.get('category_id')
+            temp = ni.get('category_temp_id')
+            if temp is not None:
+                cat_id = temp_id_map.get(str(temp), cat_id)
+            if not ni.get('name', '').strip():
+                continue
+            item = ShoppingItem(
+                shopping_list_id=list_id,
+                category_id=cat_id,
+                name=ni['name'].strip(),
+                quantity=_norm_qty(ni.get('quantity')),
+                checked=ni.get('checked', False),
+                sort_order=ni.get('sort_order', 0),
+            )
+            db.session.add(item)
+
+        db.session.commit()
+        return jsonify({"message": "Batch salvato"}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e), "code": 500}), 500
