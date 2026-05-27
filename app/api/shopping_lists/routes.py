@@ -2,10 +2,52 @@ import secrets
 import traceback
 from flask import request, jsonify
 from sqlalchemy.orm import joinedload
+from sqlalchemy import func
 from app.api import api
 from app.database import db
 from app.database.shopping_list import ShoppingList, ShoppingItem, ShoppingCategory, ShoppingListParticipant
 from app.api.shopping_items.routes import _norm_qty
+
+
+def _build_category_tree(list_id):
+    """Carica tutte le categorie e item di una lista in query flat e ricostruisce l'albero in Python.
+    Supporta sottocategorie a profondità arbitraria senza join ricorsivi."""
+    all_cats = ShoppingCategory.query.filter_by(shopping_list_id=list_id).all()
+    all_items = ShoppingItem.query.filter_by(shopping_list_id=list_id).all()
+
+    # Indice item per category_id
+    items_by_cat = {}
+    uncategorized = []
+    for item in all_items:
+        if item.category_id is None:
+            uncategorized.append(item)
+        else:
+            items_by_cat.setdefault(item.category_id, []).append(item)
+
+    # Indice categorie per id e per parent_id
+    cat_by_id = {c.id: c for c in all_cats}
+    children_by_parent = {}
+    for c in all_cats:
+        children_by_parent.setdefault(c.parent_id, []).append(c)
+
+    def serialize_cat(c):
+        return {
+            "id": c.id,
+            "shopping_list_id": c.shopping_list_id,
+            "parent_id": c.parent_id,
+            "name": c.name,
+            "sort_order": c.sort_order,
+            "created_at": c.created_at,
+            "items": [_serialize_item(i) for i in sorted(items_by_cat.get(c.id, []), key=lambda i: i.sort_order)],
+            "children": [serialize_cat(ch) for ch in sorted(children_by_parent.get(c.id, []), key=lambda ch: ch.sort_order)],
+        }
+
+    root_cats = sorted(children_by_parent.get(None, []), key=lambda c: c.sort_order)
+    return (
+        [serialize_cat(c) for c in root_cats],
+        [_serialize_item(i) for i in sorted(uncategorized, key=lambda i: i.sort_order)],
+        all_items,
+    )
 
 
 def _serialize_item(i):
@@ -35,8 +77,21 @@ def _serialize_category(c):
     }
 
 
-def _serialize_list(sl, include_items=False):
-    all_items = sl.items or []
+def _serialize_list(sl, include_items=False, items_count=None, checked_count=None, participant_count=None):
+    # Se i conteggi non sono pre-calcolati (singola lista), li calcoliamo qui
+    if items_count is None or checked_count is None:
+        counts = db.session.query(
+            func.count(ShoppingItem.id),
+            func.sum(func.cast(ShoppingItem.checked, db.Integer))
+        ).filter_by(shopping_list_id=sl.id).one()
+        items_count = counts[0] or 0
+        checked_count = counts[1] or 0
+
+    if participant_count is None:
+        participant_count = db.session.query(func.count(ShoppingListParticipant.user_id)) \
+            .filter_by(shopping_list_id=sl.id).scalar() or 0
+        participant_count += 1  # includi owner
+
     data = {
         "id": sl.id,
         "name": sl.name,
@@ -46,9 +101,13 @@ def _serialize_list(sl, include_items=False):
         "starred": sl.starred,
         "invite_token": sl.invite_token,
         "created_at": sl.created_at,
-        "items_count": len(all_items),
-        "checked_count": sum(1 for i in all_items if i.checked),
-        "participants": (
+        "items_count": items_count,
+        "checked_count": checked_count,
+        "participants_count": participant_count,
+    }
+    if include_items:
+        # Nel dettaglio servono i dati completi dei partecipanti
+        data["participants"] = (
             [
                 {
                     "user_id": sl.owner.id,
@@ -71,54 +130,56 @@ def _serialize_list(sl, include_items=False):
                 "joined_at": p.joined_at,
             }
             for p in (sl.participants or [])
-        ],
-    }
-    if include_items:
-        # Solo categorie root (parent_id is None)
-        root_categories = sorted(
-            [c for c in (sl.categories or []) if c.parent_id is None],
-            key=lambda c: c.sort_order
-        )
-        data["categories"] = [_serialize_category(c) for c in root_categories]
-        # Item senza categoria
-        uncategorized = sorted(
-            [i for i in all_items if i.category_id is None],
-            key=lambda i: i.sort_order
-        )
-        data["items"] = [_serialize_item(i) for i in uncategorized]
+        ]
+        categories, uncategorized_items, _ = _build_category_tree(sl.id)
+        data["categories"] = categories
+        data["items"] = uncategorized_items
     return data
 
 
 @api.route('/shopping-lists/by-user/<int:user_id>', methods=['GET'])
 def get_shopping_lists_by_user(user_id):
+    # Carica solo owner, senza partecipanti completi
     owned = ShoppingList.query.options(
         joinedload(ShoppingList.owner),
-        joinedload(ShoppingList.items),
-        joinedload(ShoppingList.categories).joinedload(ShoppingCategory.items),
-        joinedload(ShoppingList.categories).joinedload(ShoppingCategory.children).joinedload(ShoppingCategory.items),
-        joinedload(ShoppingList.participants).joinedload(ShoppingListParticipant.user)
     ).filter_by(owner_id=user_id).all()
 
     shared_ids = db.session.query(ShoppingListParticipant.shopping_list_id).filter_by(user_id=user_id)
     shared = ShoppingList.query.options(
         joinedload(ShoppingList.owner),
-        joinedload(ShoppingList.items),
-        joinedload(ShoppingList.categories).joinedload(ShoppingCategory.items),
-        joinedload(ShoppingList.categories).joinedload(ShoppingCategory.children).joinedload(ShoppingCategory.items),
-        joinedload(ShoppingList.participants).joinedload(ShoppingListParticipant.user)
     ).filter(ShoppingList.id.in_(shared_ids), ShoppingList.owner_id != user_id).all()
 
     all_lists = owned + shared
-    return jsonify({"shopping_lists": [_serialize_list(sl) for sl in all_lists]})
+    all_list_ids = [sl.id for sl in all_lists]
+
+    # Bulk COUNT item (totale + spuntati)
+    counts_rows = db.session.query(
+        ShoppingItem.shopping_list_id,
+        func.count(ShoppingItem.id),
+        func.sum(func.cast(ShoppingItem.checked, db.Integer))
+    ).filter(ShoppingItem.shopping_list_id.in_(all_list_ids)).group_by(ShoppingItem.shopping_list_id).all()
+    counts_by_list = {row[0]: (row[1] or 0, row[2] or 0) for row in counts_rows}
+
+    # Bulk COUNT partecipanti (esclude owner, +1 viene aggiunto in _serialize_list)
+    part_rows = db.session.query(
+        ShoppingListParticipant.shopping_list_id,
+        func.count(ShoppingListParticipant.user_id)
+    ).filter(ShoppingListParticipant.shopping_list_id.in_(all_list_ids)).group_by(ShoppingListParticipant.shopping_list_id).all()
+    parts_by_list = {row[0]: row[1] for row in part_rows}
+
+    return jsonify({"shopping_lists": [
+        _serialize_list(sl,
+            items_count=counts_by_list.get(sl.id, (0, 0))[0],
+            checked_count=counts_by_list.get(sl.id, (0, 0))[1],
+            participant_count=parts_by_list.get(sl.id, 0) + 1,  # +1 per owner
+        ) for sl in all_lists
+    ]})
 
 
 @api.route('/shopping-lists/<int:list_id>', methods=['GET'])
 def get_shopping_list(list_id):
     sl = ShoppingList.query.options(
         joinedload(ShoppingList.owner),
-        joinedload(ShoppingList.items),
-        joinedload(ShoppingList.categories).joinedload(ShoppingCategory.items),
-        joinedload(ShoppingList.categories).joinedload(ShoppingCategory.children).joinedload(ShoppingCategory.items),
         joinedload(ShoppingList.participants).joinedload(ShoppingListParticipant.user)
     ).get_or_404(list_id)
     return jsonify(_serialize_list(sl, include_items=True))
