@@ -4,6 +4,7 @@ import json
 import traceback
 from flask import abort, request, jsonify
 from sqlalchemy.orm import joinedload
+from sqlalchemy import func
 from supabase import create_client
 from app.api import api
 from app.database import db
@@ -133,6 +134,26 @@ def get_user_expenses_lists_by_email(email):
         .order_by(ExpensesList.id)
         .all()
     )
+
+    all_list_ids = [el.id for el in expenses_lists]
+
+    # Bulk COUNT partecipanti per tutte le liste in una query sola
+    part_counts = db.session.query(
+        ExpensesListParticipant.expenses_list_id,
+        func.count(ExpensesListParticipant.user_id)
+    ).filter(ExpensesListParticipant.expenses_list_id.in_(all_list_ids)) \
+     .group_by(ExpensesListParticipant.expenses_list_id).all()
+    parts_by_list = {row[0]: row[1] for row in part_counts}
+
+    # Bulk COUNT spese per tutte le liste in una query sola
+    from app.database.expense import Expense
+    exp_counts = db.session.query(
+        Expense.expense_list_id,
+        func.count(Expense.id)
+    ).filter(Expense.expense_list_id.in_(all_list_ids)) \
+     .group_by(Expense.expense_list_id).all()
+    exps_by_list = {row[0]: row[1] for row in exp_counts}
+
     return jsonify({
         "user": user_to_dict(u),
         "expenses_lists": [
@@ -144,19 +165,8 @@ def get_user_expenses_lists_by_email(email):
                 "created_at": el.created_at,
                 "list_type": el.list_type.name if el.list_type else "shared",
                 "max_participants": el.list_type.max_participants if el.list_type else 8,
-                "expenses_count": len(el.expenses),
-                "participants": [
-                    {
-                        "user_id": p.user_id,
-                        "name": p.user.name,
-                        "surname": p.user.surname,
-                        "email": p.user.email,
-                        "profile_image": p.user.profile_image,
-                        "joined_at": p.joined_at,
-                        "is_guest": bool(p.user.is_guest),
-                    }
-                    for p in el.participants
-                ]
+                "expenses_count": exps_by_list.get(el.id, 0),
+                "participants_count": parts_by_list.get(el.id, 0),
             }
             for el in expenses_lists
         ]
