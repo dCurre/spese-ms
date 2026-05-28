@@ -129,6 +129,41 @@ def transfer_owner(list_id):
         return jsonify({"error": str(e), "code": 500}), 500
 
 
+@api.route('/expenses-lists/<int:list_id>/balance', methods=['GET'])
+def get_expenses_list_balance(list_id):
+    try:
+        from app.database.expense import Expense
+        from sqlalchemy.orm import joinedload
+        expenses = (
+            Expense.query
+            .options(joinedload(Expense.user))
+            .filter_by(expense_list_id=list_id)
+            .all()
+        )
+        map_pagato = {}
+        for e in expenses:
+            key = f"{e.user.name} {e.user.surname or ''}".strip()
+            map_pagato[key] = map_pagato.get(key, 0) + float(e.amount)
+
+        balance = []
+        keys = list(map_pagato.keys())
+        for buyer, buyer_paid in map_pagato.items():
+            for receiver, receiver_paid in map_pagato.items():
+                if buyer != receiver:
+                    balance.append({
+                        "buyer": buyer,
+                        "receiver": receiver,
+                        "toPay": round((receiver_paid - buyer_paid) / len(map_pagato), 2),
+                    })
+        return jsonify({
+            "balance": balance,
+            "totals": [{"name": k, "amount": round(v, 2)} for k, v in sorted(map_pagato.items())],
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e), "code": 500}), 500
+
+
 @api.route('/expenses-lists/<int:list_id>', methods=['DELETE'])
 def delete_expenses_list(list_id):
     try:
