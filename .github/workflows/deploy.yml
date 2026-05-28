@@ -1,0 +1,29 @@
+name: Bump version
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Bump patch version
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          VERSION=$(grep -oP '(?<=__version__ = ")[^"]+' version.py)
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+          NEW_PATCH=$((PATCH + 1))
+          NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+          sed -i "s/__version__ = \"$VERSION\"/__version__ = \"$NEW_VERSION\"/" version.py
+          git add version.py
+          git commit -m "chore: bump version to $NEW_VERSION [skip ci]"
+          git push
