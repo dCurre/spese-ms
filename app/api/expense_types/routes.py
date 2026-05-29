@@ -1,8 +1,8 @@
-import traceback
 from flask import request, jsonify
 from app.api import api
 from app.database import db
 from app.database.expense_type import ExpenseType
+from app.exceptions import ForbiddenError
 
 PROTECTED_DELETE_IDS = {1}  # Altro non eliminabile
 
@@ -18,43 +18,28 @@ def get_expense_types():
 
 @api.route('/expense-types', methods=['POST'])
 def create_expense_type():
-    try:
-        data = request.get_json()
-        t = ExpenseType(name=data['name'])
-        db.session.add(t)
-        db.session.commit()
-        return jsonify({"id": t.id, "message": "Tipologia creata"}), 201
-    except Exception as e:
-        traceback.print_exc()
-        db.session.rollback()
-        return jsonify({"error": str(e), "code": 500}), 500
+    data = request.get_json() or {}
+    t = ExpenseType(name=data['name'])
+    db.session.add(t)
+    db.session.commit()
+    return jsonify({"id": t.id, "message": "Tipologia creata"}), 201
 
 
 @api.route('/expense-types/<int:type_id>', methods=['PUT'])
 def update_expense_type(type_id):
-    try:
-        t = ExpenseType.query.get_or_404(type_id)
-        data = request.get_json()
-        if 'name' in data:
-            t.name = data['name']
-        db.session.commit()
-        return jsonify({"message": "Tipologia aggiornata"}), 200
-    except Exception as e:
-        traceback.print_exc()
-        db.session.rollback()
-        return jsonify({"error": str(e), "code": 500}), 500
+    t = ExpenseType.query.get_or_404(type_id)
+    data = request.get_json() or {}
+    if 'name' in data:
+        t.name = data['name']
+    db.session.commit()
+    return jsonify({"message": "Tipologia aggiornata"}), 200
 
 
 @api.route('/expense-types/<int:type_id>', methods=['DELETE'])
 def delete_expense_type(type_id):
     if type_id in PROTECTED_DELETE_IDS:
-        return jsonify({"error": "Tipologia non eliminabile", "code": 403}), 403
-    try:
-        t = ExpenseType.query.get_or_404(type_id)
-        db.session.delete(t)
-        db.session.commit()
-        return jsonify({"message": "Tipologia eliminata"}), 200
-    except Exception as e:
-        traceback.print_exc()
-        db.session.rollback()
-        return jsonify({"error": str(e), "code": 500}), 500
+        raise ForbiddenError("Tipologia non eliminabile")
+    t = ExpenseType.query.get_or_404(type_id)
+    db.session.delete(t)
+    db.session.commit()
+    return jsonify({"message": "Tipologia eliminata"}), 200

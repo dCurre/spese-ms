@@ -3,6 +3,14 @@
     "name": "spese-ms",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000",
+      "type": "string",
+      "description": "Cambia in https://spese-ms.onrender.com per produzione"
+    }
+  ],
   "item": [
     {
       "name": "Health",
@@ -35,23 +43,6 @@
           }
         },
         {
-          "name": "Get user by email",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{base_url}}/api/users/by-email/:email",
-              "host": ["{{base_url}}"],
-              "path": ["api", "users", "by-email", ":email"],
-              "variable": [
-                {
-                  "key": "email",
-                  "value": "mario.rossi@example.com"
-                }
-              ]
-            }
-          }
-        },
-        {
           "name": "Get user by id",
           "request": {
             "method": "GET",
@@ -59,12 +50,48 @@
               "raw": "{{base_url}}/api/users/:id",
               "host": ["{{base_url}}"],
               "path": ["api", "users", ":id"],
-              "variable": [
-                {
-                  "key": "id",
-                  "value": "1"
-                }
-              ]
+              "variable": [{"key": "id", "value": "1"}]
+            }
+          }
+        },
+        {
+          "name": "Get user by email",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/users/by-email/:email",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "by-email", ":email"],
+              "variable": [{"key": "email", "value": "mario.rossi@example.com"}]
+            }
+          }
+        },
+        {
+          "name": "Get user expenses lists by email",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/users/by-email/:email/expenses-lists",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "by-email", ":email", "expenses-lists"],
+              "variable": [{"key": "email", "value": "mario.rossi@example.com"}]
+            }
+          }
+        },
+        {
+          "name": "Upsert user by email (login Google)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"mario.rossi@example.com\",\n  \"name\": \"Mario\",\n  \"surname\": \"Rossi\",\n  \"profile_image\": \"\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/users/upsert-by-email",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "upsert-by-email"]
             }
           }
         },
@@ -72,15 +99,11 @@
           "name": "Create user",
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
+            "header": [{"key": "Content-Type", "value": "application/json"}],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Mario\",\n  \"surname\": \"Rossi\",\n  \"email\": \"mario.rossi@example.com\",\n  \"profile_image\": null,\n  \"paid_list_shown\": true\n}"
+              "raw": "{\n  \"name\": \"Mario\",\n  \"surname\": \"Rossi\",\n  \"email\": \"mario.rossi@example.com\",\n  \"profile_image\": null,\n  \"paid_list_shown\": true,\n  \"is_guest\": false\n}",
+              "options": {"raw": {"language": "json"}}
             },
             "url": {
               "raw": "{{base_url}}/api/users",
@@ -90,46 +113,213 @@
           }
         },
         {
-          "name": "Update user by id",
+          "name": "Update user",
           "request": {
             "method": "PUT",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
+            "header": [{"key": "Content-Type", "value": "application/json"}],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Mario\",\n  \"surname\": \"Rossi\",\n  \"email\": \"mario.rossi@example.com\",\n  \"profile_image\": null,\n  \"paid_list_shown\": true\n}"
+              "raw": "{\n  \"name\": \"Mario\",\n  \"surname\": \"Rossi\",\n  \"paid_list_shown\": true,\n  \"theme_preference\": \"dark\"\n}",
+              "options": {"raw": {"language": "json"}}
             },
             "url": {
               "raw": "{{base_url}}/api/users/:id",
               "host": ["{{base_url}}"],
               "path": ["api", "users", ":id"],
-              "variable": [
-                {
-                  "key": "id",
-                  "value": "1"
-                }
-              ]
+              "variable": [{"key": "id", "value": "1"}]
             }
           }
         },
         {
-          "name": "Delete user by id",
+          "name": "Update user role",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role_id\": 2,\n  \"caller_email\": \"superadmin@example.com\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/users/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", ":id"],
+              "variable": [{"key": "id", "value": "2"}]
+            }
+          }
+        },
+        {
+          "name": "Delete user",
           "request": {
             "method": "DELETE",
             "url": {
               "raw": "{{base_url}}/api/users/:id",
               "host": ["{{base_url}}"],
               "path": ["api", "users", ":id"],
-              "variable": [
-                {
-                  "key": "id",
-                  "value": "1"
-                }
+              "variable": [{"key": "id", "value": "1"}]
+            }
+          }
+        },
+        {
+          "name": "Upload profile image",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {"key": "file", "type": "file", "src": ""}
               ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/users/:id/profile-image",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", ":id", "profile-image"],
+              "variable": [{"key": "id", "value": "1"}]
+            }
+          }
+        },
+        {
+          "name": "Select profile image from history",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://ysucbvilxwaduksccakz.supabase.co/storage/v1/object/public/profile-images/1/abc.jpg\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/users/:id/profile-image/select",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", ":id", "profile-image", "select"],
+              "variable": [{"key": "id", "value": "1"}]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "User Roles",
+      "item": [
+        {
+          "name": "Get all user roles",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/user-roles",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user-roles"]
+            }
+          }
+        },
+        {
+          "name": "Create user role",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"moderatore\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/user-roles",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user-roles"]
+            }
+          }
+        },
+        {
+          "name": "Update user role",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"moderatore-v2\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/user-roles/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user-roles", ":id"],
+              "variable": [{"key": "id", "value": "4"}]
+            }
+          }
+        },
+        {
+          "name": "Delete user role",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/user-roles/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user-roles", ":id"],
+              "variable": [{"key": "id", "value": "4"}]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Expense Types",
+      "item": [
+        {
+          "name": "Get all expense types",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/expense-types",
+              "host": ["{{base_url}}"],
+              "path": ["api", "expense-types"]
+            }
+          }
+        },
+        {
+          "name": "Create expense type",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Carburante\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/expense-types",
+              "host": ["{{base_url}}"],
+              "path": ["api", "expense-types"]
+            }
+          }
+        },
+        {
+          "name": "Update expense type",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Carburante aggiornato\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/expense-types/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "expense-types", ":id"],
+              "variable": [{"key": "id", "value": "2"}]
+            }
+          }
+        },
+        {
+          "name": "Delete expense type",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/expense-types/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "expense-types", ":id"],
+              "variable": [{"key": "id", "value": "2"}]
             }
           }
         }
@@ -157,12 +347,19 @@
               "raw": "{{base_url}}/api/expenses/:id",
               "host": ["{{base_url}}"],
               "path": ["api", "expenses", ":id"],
-              "variable": [
-                {
-                  "key": "id",
-                  "value": "1"
-                }
-              ]
+              "variable": [{"key": "id", "value": "1"}]
+            }
+          }
+        },
+        {
+          "name": "Get expenses by list",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/expenses/by-list/:list_id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "expenses", "by-list", ":list_id"],
+              "variable": [{"key": "list_id", "value": "1"}]
             }
           }
         },
@@ -170,15 +367,11 @@
           "name": "Create expense",
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
+            "header": [{"key": "Content-Type", "value": "application/json"}],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Spesa supermercato\",\n  \"amount\": 45.50,\n  \"expense_owner_user_id\": 1,\n  \"expense_list_id\": 1,\n  \"expense_date\": \"2026-05-18T00:00:00\"\n}"
+              "raw": "{\n  \"name\": \"Spesa supermercato\",\n  \"amount\": 45.50,\n  \"expense_owner_user_id\": 1,\n  \"expense_list_id\": 1,\n  \"expense_date\": \"2026-05-18\",\n  \"expense_type_id\": 1\n}",
+              "options": {"raw": {"language": "json"}}
             },
             "url": {
               "raw": "{{base_url}}/api/expenses",
@@ -188,19 +381,32 @@
           }
         },
         {
-          "name": "Delete expense by id",
+          "name": "Update expense",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Spesa aggiornata\",\n  \"amount\": 50.00,\n  \"expense_date\": \"2026-05-20\",\n  \"modified_by\": \"mario.rossi@example.com\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/expenses/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "expenses", ":id"],
+              "variable": [{"key": "id", "value": "1"}]
+            }
+          }
+        },
+        {
+          "name": "Delete expense",
           "request": {
             "method": "DELETE",
             "url": {
               "raw": "{{base_url}}/api/expenses/:id",
               "host": ["{{base_url}}"],
               "path": ["api", "expenses", ":id"],
-              "variable": [
-                {
-                  "key": "id",
-                  "value": "1"
-                }
-              ]
+              "variable": [{"key": "id", "value": "1"}]
             }
           }
         }
@@ -221,6 +427,18 @@
           }
         },
         {
+          "name": "Get expenses lists (solo non pagate)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/expenses-lists?paid=false",
+              "host": ["{{base_url}}"],
+              "path": ["api", "expenses-lists"],
+              "query": [{"key": "paid", "value": "false"}]
+            }
+          }
+        },
+        {
           "name": "Get expenses list by id",
           "request": {
             "method": "GET",
@@ -228,12 +446,7 @@
               "raw": "{{base_url}}/api/expenses-lists/:id",
               "host": ["{{base_url}}"],
               "path": ["api", "expenses-lists", ":id"],
-              "variable": [
-                {
-                  "key": "id",
-                  "value": "1"
-                }
-              ]
+              "variable": [{"key": "id", "value": "1"}]
             }
           }
         },
@@ -241,15 +454,11 @@
           "name": "Create expenses list",
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
+            "header": [{"key": "Content-Type", "value": "application/json"}],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Lista maggio\",\n  \"user_id\": 1,\n  \"paid\": false\n}"
+              "raw": "{\n  \"name\": \"Lista maggio\",\n  \"user_id\": 1,\n  \"paid\": false,\n  \"list_type\": \"shared\"\n}",
+              "options": {"raw": {"language": "json"}}
             },
             "url": {
               "raw": "{{base_url}}/api/expenses-lists",
@@ -259,28 +468,62 @@
           }
         },
         {
-          "name": "Update expenses list by id",
+          "name": "Update expenses list",
           "request": {
             "method": "PUT",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Lista aggiornata\",\n  \"paid\": true\n}" },
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Lista aggiornata\",\n  \"paid\": true\n}",
+              "options": {"raw": {"language": "json"}}
+            },
             "url": {
               "raw": "{{base_url}}/api/expenses-lists/:id",
               "host": ["{{base_url}}"],
               "path": ["api", "expenses-lists", ":id"],
-              "variable": [{ "key": "id", "value": "1" }]
+              "variable": [{"key": "id", "value": "1"}]
             }
           }
         },
         {
-          "name": "Delete expenses list by id",
+          "name": "Delete expenses list",
           "request": {
             "method": "DELETE",
             "url": {
               "raw": "{{base_url}}/api/expenses-lists/:id",
               "host": ["{{base_url}}"],
               "path": ["api", "expenses-lists", ":id"],
-              "variable": [{ "key": "id", "value": "1" }]
+              "variable": [{"key": "id", "value": "1"}]
+            }
+          }
+        },
+        {
+          "name": "Transfer owner",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_owner_id\": 1,\n  \"new_owner_id\": 2\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/expenses-lists/:id/transfer-owner",
+              "host": ["{{base_url}}"],
+              "path": ["api", "expenses-lists", ":id", "transfer-owner"],
+              "variable": [{"key": "id", "value": "1"}]
+            }
+          }
+        },
+        {
+          "name": "Get balance",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/expenses-lists/:id/balance",
+              "host": ["{{base_url}}"],
+              "path": ["api", "expenses-lists", ":id", "balance"],
+              "variable": [{"key": "id", "value": "1"}]
             }
           }
         }
@@ -297,7 +540,7 @@
               "raw": "{{base_url}}/api/expenses-lists/:list_id/participants",
               "host": ["{{base_url}}"],
               "path": ["api", "expenses-lists", ":list_id", "participants"],
-              "variable": [{ "key": "list_id", "value": "1" }]
+              "variable": [{"key": "list_id", "value": "1"}]
             }
           }
         },
@@ -305,13 +548,17 @@
           "name": "Add participant",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"user_id\": 1\n}" },
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": 2\n}",
+              "options": {"raw": {"language": "json"}}
+            },
             "url": {
               "raw": "{{base_url}}/api/expenses-lists/:list_id/participants",
               "host": ["{{base_url}}"],
               "path": ["api", "expenses-lists", ":list_id", "participants"],
-              "variable": [{ "key": "list_id", "value": "1" }]
+              "variable": [{"key": "list_id", "value": "1"}]
             }
           }
         },
@@ -324,10 +571,522 @@
               "host": ["{{base_url}}"],
               "path": ["api", "expenses-lists", ":list_id", "participants", ":user_id"],
               "variable": [
-                { "key": "list_id", "value": "1" },
-                { "key": "user_id", "value": "1" }
+                {"key": "list_id", "value": "1"},
+                {"key": "user_id", "value": "2"}
               ]
             }
+          }
+        },
+        {
+          "name": "Remove guest participant",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/expenses-lists/:list_id/participants/:user_id/guest",
+              "host": ["{{base_url}}"],
+              "path": ["api", "expenses-lists", ":list_id", "participants", ":user_id", "guest"],
+              "variable": [
+                {"key": "list_id", "value": "1"},
+                {"key": "user_id", "value": "3"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Shopping Lists",
+      "item": [
+        {
+          "name": "Get shopping lists by user",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/shopping-lists/by-user/:user_id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shopping-lists", "by-user", ":user_id"],
+              "variable": [{"key": "user_id", "value": "1"}]
+            }
+          }
+        },
+        {
+          "name": "Get shopping list by id",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/shopping-lists/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shopping-lists", ":id"],
+              "variable": [{"key": "id", "value": "1"}]
+            }
+          }
+        },
+        {
+          "name": "Create shopping list",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Spesa settimanale\",\n  \"owner_id\": 1,\n  \"list_type\": \"personal\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/shopping-lists",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shopping-lists"]
+            }
+          }
+        },
+        {
+          "name": "Update shopping list",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Lista aggiornata\",\n  \"completed\": false,\n  \"starred\": true\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/shopping-lists/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shopping-lists", ":id"],
+              "variable": [{"key": "id", "value": "1"}]
+            }
+          }
+        },
+        {
+          "name": "Delete shopping list",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/shopping-lists/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shopping-lists", ":id"],
+              "variable": [{"key": "id", "value": "1"}]
+            }
+          }
+        },
+        {
+          "name": "Generate invite token",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/shopping-lists/:id/invite-token",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shopping-lists", ":id", "invite-token"],
+              "variable": [{"key": "id", "value": "1"}]
+            }
+          }
+        },
+        {
+          "name": "Revoke invite token",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/shopping-lists/:id/invite-token",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shopping-lists", ":id", "invite-token"],
+              "variable": [{"key": "id", "value": "1"}]
+            }
+          }
+        },
+        {
+          "name": "Join by token",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": 2\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/shopping-lists/join/:token",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shopping-lists", "join", ":token"],
+              "variable": [{"key": "token", "value": "il-tuo-token-qui"}]
+            }
+          }
+        },
+        {
+          "name": "Transfer ownership",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"old_owner_id\": 1,\n  \"new_owner_id\": 2\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/shopping-lists/:id/transfer-ownership",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shopping-lists", ":id", "transfer-ownership"],
+              "variable": [{"key": "id", "value": "1"}]
+            }
+          }
+        },
+        {
+          "name": "Add participant",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": 2\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/shopping-lists/:id/participants",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shopping-lists", ":id", "participants"],
+              "variable": [{"key": "id", "value": "1"}]
+            }
+          }
+        },
+        {
+          "name": "Remove participant",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/shopping-lists/:id/participants/:user_id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shopping-lists", ":id", "participants", ":user_id"],
+              "variable": [
+                {"key": "id", "value": "1"},
+                {"key": "user_id", "value": "2"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Batch save",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categories_create\": [\n    {\"temp_id\": \"tmp1\", \"name\": \"Frutta\", \"parent_id\": null, \"sort_order\": 0}\n  ],\n  \"categories_update\": [],\n  \"categories_delete\": [],\n  \"items_create\": [\n    {\"name\": \"Mele\", \"quantity\": 2, \"checked\": false, \"sort_order\": 0, \"category_temp_id\": \"tmp1\"}\n  ],\n  \"items_update\": [],\n  \"items_delete\": []\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/shopping-lists/:id/batch-save",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shopping-lists", ":id", "batch-save"],
+              "variable": [{"key": "id", "value": "1"}]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Shopping Items",
+      "item": [
+        {
+          "name": "Create shopping item",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"shopping_list_id\": 1,\n  \"name\": \"Latte\",\n  \"quantity\": 2,\n  \"checked\": false,\n  \"sort_order\": 0,\n  \"category_id\": null\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/shopping-items",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shopping-items"]
+            }
+          }
+        },
+        {
+          "name": "Update shopping item",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Latte intero\",\n  \"quantity\": 3\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/shopping-items/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shopping-items", ":id"],
+              "variable": [{"key": "id", "value": "1"}]
+            }
+          }
+        },
+        {
+          "name": "Toggle check item",
+          "request": {
+            "method": "PATCH",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"checked\": true\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/shopping-items/:id/check",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shopping-items", ":id", "check"],
+              "variable": [{"key": "id", "value": "1"}]
+            }
+          }
+        },
+        {
+          "name": "Delete shopping item",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/shopping-items/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shopping-items", ":id"],
+              "variable": [{"key": "id", "value": "1"}]
+            }
+          }
+        },
+        {
+          "name": "Bulk update items",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"updates\": [\n    {\"id\": 1, \"name\": \"Latte\", \"quantity\": 2, \"checked\": true},\n    {\"id\": 2, \"checked\": false}\n  ],\n  \"delete_ids\": [3, 4]\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/shopping-items/bulk",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shopping-items", "bulk"]
+            }
+          }
+        },
+        {
+          "name": "Check all items",
+          "request": {
+            "method": "PATCH",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"shopping_list_id\": 1,\n  \"checked\": true,\n  \"uncategorized_only\": false\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/shopping-items/check-all",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shopping-items", "check-all"]
+            }
+          }
+        },
+        {
+          "name": "Reorder items",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ordered_ids\": [3, 1, 2]\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/shopping-items/reorder",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shopping-items", "reorder"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Shopping Categories",
+      "item": [
+        {
+          "name": "Create shopping category",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"shopping_list_id\": 1,\n  \"name\": \"Frutta e verdura\",\n  \"parent_id\": null,\n  \"sort_order\": 0\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/shopping-categories",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shopping-categories"]
+            }
+          }
+        },
+        {
+          "name": "Update shopping category",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Frutta\",\n  \"sort_order\": 1\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/shopping-categories/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shopping-categories", ":id"],
+              "variable": [{"key": "id", "value": "1"}]
+            }
+          }
+        },
+        {
+          "name": "Delete shopping category",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/shopping-categories/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shopping-categories", ":id"],
+              "variable": [{"key": "id", "value": "1"}]
+            }
+          }
+        },
+        {
+          "name": "Check/uncheck category (ricorsivo)",
+          "request": {
+            "method": "PATCH",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"checked\": true\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/shopping-categories/:id/check",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shopping-categories", ":id", "check"],
+              "variable": [{"key": "id", "value": "1"}]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🧪 Validation Tests",
+      "item": [
+        {
+          "name": "[400] Create expense — body vuoto",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/expenses",
+              "host": ["{{base_url}}"],
+              "path": ["api", "expenses"]
+            },
+            "description": "Atteso: 400 con lista dei campi mancanti (name, amount, expense_owner_user_id, expense_list_id, expense_date)"
+          }
+        },
+        {
+          "name": "[400] Upsert user — email non valida",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"non-e-una-email\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/users/upsert-by-email",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "upsert-by-email"]
+            },
+            "description": "Atteso: 400 con {\"error\": {\"email\": [\"Not a valid email address.\"]}}"
+          }
+        },
+        {
+          "name": "[400] Create expense — amount negativo",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test\",\n  \"amount\": -10,\n  \"expense_owner_user_id\": 1,\n  \"expense_list_id\": 1,\n  \"expense_date\": \"2026-01-01\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/expenses",
+              "host": ["{{base_url}}"],
+              "path": ["api", "expenses"]
+            },
+            "description": "Atteso: 400 — amount deve essere >= 0"
+          }
+        },
+        {
+          "name": "[400] Create shopping list — body vuoto",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/shopping-lists",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shopping-lists"]
+            },
+            "description": "Atteso: 400 con name e owner_id mancanti"
+          }
+        },
+        {
+          "name": "[404] Get user inesistente",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/users/99999",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "99999"]
+            },
+            "description": "Atteso: 404 in JSON (non HTML di Flask)"
+          }
+        },
+        {
+          "name": "[403] Update user role protetto",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"nuovo-nome\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/api/user-roles/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user-roles", "1"]
+            },
+            "description": "Atteso: 403 con {\"error\": \"Ruolo non modificabile\"}"
+          }
+        },
+        {
+          "name": "[403] Delete expense type protetto",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/expense-types/1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "expense-types", "1"]
+            },
+            "description": "Atteso: 403 con {\"error\": \"Tipologia non eliminabile\"}"
           }
         }
       ]

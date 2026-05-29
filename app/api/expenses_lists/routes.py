@@ -1,11 +1,13 @@
-import traceback
-from flask import abort, request, jsonify
-from datetime import datetime, timezone
+from flask import request, jsonify
 from sqlalchemy.orm import joinedload
 from app.api import api
 from app.database import db
 from app.database.expenses_list import ExpensesList
 from app.database.list_type import ListType
+from app.exceptions import ValidationError, ForbiddenError
+from app.schemas import parse_body, CreateExpensesListSchema
+from app.audit import log_audit
+
 
 @api.route('/expenses-lists', methods=['GET'])
 def get_expenses_lists():
@@ -28,6 +30,7 @@ def get_expenses_lists():
             for el in expenses_lists
         ]
     })
+
 
 @api.route('/expenses-lists/<int:list_id>', methods=['GET'])
 def get_expenses_list(list_id):
@@ -54,124 +57,103 @@ def get_expenses_list(list_id):
         ]
     })
 
+
 @api.route('/expenses-lists', methods=['POST'])
 def create_expenses_list():
-    try:
-        data = request.get_json()
-        type_name = data.get('list_type', 'shared')
-        list_type = ListType.query.filter_by(name=type_name).first()
-        expenses_list = ExpensesList(
-            name=data.get('name'),
-            user_id=data['user_id'],
-            paid=data.get('paid', False),
-            list_type_id=list_type.id if list_type else 1,
-        )
-        db.session.add(expenses_list)
-        db.session.commit()
-        return jsonify({"id": expenses_list.id, "message": "Lista creata"}), 201
-    except Exception as e:
-        traceback.print_exc()
-        db.session.rollback()
-        return jsonify({"error": str(e), "code": 500}), 500
+    data = parse_body(CreateExpensesListSchema)
+    type_name = data.get('list_type', 'shared')
+    list_type = ListType.query.filter_by(name=type_name).first()
+    expenses_list = ExpensesList(
+        name=data['name'],
+        user_id=data['user_id'],
+        paid=data.get('paid', False),
+        list_type_id=list_type.id if list_type else 1,
+    )
+    db.session.add(expenses_list)
+    db.session.commit()
+    return jsonify({"id": expenses_list.id, "message": "Lista creata"}), 201
+
 
 @api.route('/expenses-lists/<int:list_id>', methods=['PUT'])
 def update_expenses_list(list_id):
-    try:
-        el = ExpensesList.query.get_or_404(list_id)
-        data = request.get_json()
-        if 'name' in data: el.name = data['name']
-        if 'paid' in data: el.paid = data['paid']
-        db.session.commit()
-        return jsonify({"message": "Lista aggiornata"}), 200
-    except Exception as e:
-        traceback.print_exc()
-        db.session.rollback()
-        return jsonify({"error": str(e), "code": 500}), 500
+    el = ExpensesList.query.get_or_404(list_id)
+    data = request.get_json() or {}
+    if 'name' in data: el.name = data['name']
+    if 'paid' in data: el.paid = data['paid']
+    db.session.commit()
+    return jsonify({"message": "Lista aggiornata"}), 200
+
 
 @api.route('/expenses-lists/<int:list_id>/transfer-owner', methods=['POST'])
 def transfer_owner(list_id):
-    try:
-        data = request.get_json()
-        new_owner_id = data.get('new_owner_id')
-        current_owner_id = data.get('current_owner_id')
-        if not new_owner_id or not current_owner_id:
-            return jsonify({"error": "Parametri mancanti"}), 400
+    data = request.get_json() or {}
+    new_owner_id = data.get('new_owner_id')
+    current_owner_id = data.get('current_owner_id')
+    if not new_owner_id or not current_owner_id:
+        raise ValidationError("Parametri mancanti")
 
-        el = ExpensesList.query.get_or_404(list_id)
-        if el.user_id != current_owner_id:
-            return jsonify({"error": "Non sei il proprietario della lista"}), 403
+    # SELECT FOR UPDATE: serializza trasferimenti concorrenti sulla stessa lista
+    el = ExpensesList.query.filter_by(id=list_id).with_for_update().first_or_404()
+    if el.user_id != current_owner_id:
+        raise ForbiddenError("Non sei il proprietario della lista")
 
-        from app.database.expenses_list_participant import ExpensesListParticipant
-        from app.database.user import User as UserModel
-        new_owner = UserModel.query.get(new_owner_id)
-        if not new_owner or new_owner.is_guest:
-            return jsonify({"error": "Un ospite non può essere proprietario di una lista"}), 400
+    from app.database.expenses_list_participant import ExpensesListParticipant
+    from app.database.user import User as UserModel
+    new_owner = UserModel.query.get(new_owner_id)
+    if not new_owner or new_owner.is_guest:
+        raise ValidationError("Un ospite non può essere proprietario di una lista")
 
-        is_participant = ExpensesListParticipant.query.filter_by(
-            expenses_list_id=list_id, user_id=new_owner_id
-        ).first()
-        if not is_participant:
-            return jsonify({"error": "Il nuovo owner deve essere un partecipante"}), 400
+    is_participant = ExpensesListParticipant.query.filter_by(
+        expenses_list_id=list_id, user_id=new_owner_id
+    ).first()
+    if not is_participant:
+        raise ValidationError("Il nuovo owner deve essere un partecipante")
 
-        el.user_id = new_owner_id
+    el.user_id = new_owner_id
 
-        old_owner = ExpensesListParticipant.query.filter_by(
-            expenses_list_id=list_id, user_id=current_owner_id
-        ).first()
-        if old_owner:
-            db.session.delete(old_owner)
+    old_owner = ExpensesListParticipant.query.filter_by(
+        expenses_list_id=list_id, user_id=current_owner_id
+    ).first()
+    if old_owner:
+        db.session.delete(old_owner)
 
-        db.session.commit()
-        return jsonify({"message": "Ownership trasferita"}), 200
-    except Exception as e:
-        traceback.print_exc()
-        db.session.rollback()
-        return jsonify({"error": str(e), "code": 500}), 500
+    db.session.commit()
+    log_audit("transfer_owner", list_id=list_id, from_user_id=current_owner_id, to_user_id=new_owner_id)
+    return jsonify({"message": "Ownership trasferita"}), 200
 
 
 @api.route('/expenses-lists/<int:list_id>/balance', methods=['GET'])
 def get_expenses_list_balance(list_id):
-    try:
-        from app.database.expense import Expense
-        from sqlalchemy.orm import joinedload
-        expenses = (
-            Expense.query
-            .options(joinedload(Expense.user))
-            .filter_by(expense_list_id=list_id)
-            .all()
-        )
-        map_pagato = {}
-        for e in expenses:
-            key = f"{e.user.name} {e.user.surname or ''}".strip()
-            map_pagato[key] = map_pagato.get(key, 0) + float(e.amount)
+    from app.database.expense import Expense
+    expenses = (
+        Expense.query
+        .options(joinedload(Expense.user))
+        .filter_by(expense_list_id=list_id)
+        .all()
+    )
+    map_pagato = {}
+    for e in expenses:
+        key = f"{e.user.name} {e.user.surname or ''}".strip()
+        map_pagato[key] = map_pagato.get(key, 0) + float(e.amount)
 
-        balance = []
-        keys = list(map_pagato.keys())
-        for buyer, buyer_paid in map_pagato.items():
-            for receiver, receiver_paid in map_pagato.items():
-                if buyer != receiver:
-                    balance.append({
-                        "buyer": buyer,
-                        "receiver": receiver,
-                        "toPay": round((receiver_paid - buyer_paid) / len(map_pagato), 2),
-                    })
-        return jsonify({
-            "balance": balance,
-            "totals": [{"name": k, "amount": round(v, 2)} for k, v in sorted(map_pagato.items())],
-        })
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"error": str(e), "code": 500}), 500
+    balance = []
+    for buyer, buyer_paid in map_pagato.items():
+        for receiver, receiver_paid in map_pagato.items():
+            if buyer != receiver:
+                balance.append({
+                    "buyer": buyer,
+                    "receiver": receiver,
+                    "toPay": round((receiver_paid - buyer_paid) / len(map_pagato), 2),
+                })
+    return jsonify({
+        "balance": balance,
+        "totals": [{"name": k, "amount": round(v, 2)} for k, v in sorted(map_pagato.items())],
+    })
 
 
 @api.route('/expenses-lists/<int:list_id>', methods=['DELETE'])
 def delete_expenses_list(list_id):
-    try:
-        expenses_list = ExpensesList.query.get_or_404(list_id)
-        db.session.delete(expenses_list)
-        db.session.commit()
-        return jsonify({"message": "Lista eliminata"}), 200
-    except Exception as e:
-        traceback.print_exc()
-        db.session.rollback()
-        return jsonify({"error": str(e), "code": 500}), 500
+    expenses_list = ExpensesList.query.get_or_404(list_id)
+    db.session.delete(expenses_list)
+    db.session.commit()
+    return jsonify({"message": "Lista eliminata"}), 200
