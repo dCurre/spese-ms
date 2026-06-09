@@ -59,6 +59,9 @@ def create_app():
         from app.database.expense import Expense
         from app.database.expenses_list_participant import ExpensesListParticipant
         from app.database.shopping_list import ShoppingList, ShoppingItem, ShoppingListParticipant
+        from app.database.measurement_unit import MeasurementUnit
+        from app.database.product import Product
+        from app.database.purchase import Purchase
         db.create_all()
 
     app.register_blueprint(api, url_prefix='/api')
