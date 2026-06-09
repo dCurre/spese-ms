@@ -14,3 +14,6 @@ from app.api.expense_types import routes
 from app.api.shopping_lists import routes
 from app.api.shopping_items import routes
 from app.api.shopping_categories import routes
+from app.api.measurement_units import routes
+from app.api.products import routes
+from app.api.purchases import routes

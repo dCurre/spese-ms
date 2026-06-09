@@ -82,3 +82,35 @@ class CreateShoppingCategorySchema(Schema):
     name = fields.Str(required=True, validate=validate.Length(min=1))
     parent_id = fields.Int(load_default=None, allow_none=True)
     sort_order = fields.Int(load_default=0)
+
+
+class CreateMeasurementUnitSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    name = fields.Str(required=True, validate=validate.Length(min=1, max=50))
+    symbol = fields.Str(required=True, validate=validate.Length(min=1, max=10))
+    category = fields.Str(required=True, validate=validate.OneOf(['peso', 'volume', 'numero', 'lunghezza', 'energia']))
+
+
+class CreateProductSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    name = fields.Str(required=True, validate=validate.Length(min=1, max=150))
+    brand = fields.Str(load_default=None, allow_none=True, validate=validate.Length(max=100))
+    default_unit_id = fields.Int(required=True)
+
+
+class CreatePurchaseSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    product_id = fields.Int(required=True)
+    user_id = fields.Int(required=True)
+    purchased_at = fields.Date(required=True)
+    price = fields.Decimal(required=True, places=2, validate=validate.Range(min=0))
+    quantity = fields.Decimal(required=True, places=3, validate=validate.Range(min=0.001))
+    unit_id = fields.Int(required=True)
+    store = fields.Str(load_default=None, allow_none=True, validate=validate.Length(max=150))
+    notes = fields.Str(load_default=None, allow_none=True)
