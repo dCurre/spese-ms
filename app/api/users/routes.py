@@ -290,8 +290,8 @@ def update_user(user_id):
     if 'theme_preference' in data: u.theme_preference = data['theme_preference']
     if 'language_preference' in data:
         lang = data['language_preference']
-        if lang not in ('ita', 'en'):
-            raise ValidationError("Lingua non supportata (valori ammessi: 'ita', 'en')")
+        if lang not in ('it', 'en'):
+            raise ValidationError("Lingua non supportata (valori ammessi: 'it', 'en')")
         u.language_preference = lang
     if 'role_id' in data: u.role_id = data['role_id']
     db.session.commit()
