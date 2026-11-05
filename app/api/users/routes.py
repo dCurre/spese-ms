@@ -56,6 +56,7 @@ def user_to_dict(u):
         "profile_images_history": _get_history(u),
         "paid_list_shown": u.paid_list_shown,
         "theme_preference": u.theme_preference,
+        "language_preference": u.language_preference,
         "role": u.role.name if u.role else None,
         "is_guest": bool(u.is_guest),
     }
@@ -287,6 +288,11 @@ def update_user(user_id):
     if 'profile_image' in data: u.profile_image = data['profile_image']
     if 'paid_list_shown' in data: u.paid_list_shown = data['paid_list_shown']
     if 'theme_preference' in data: u.theme_preference = data['theme_preference']
+    if 'language_preference' in data:
+        lang = data['language_preference']
+        if lang not in ('ita', 'en'):
+            raise ValidationError("Lingua non supportata (valori ammessi: 'ita', 'en')")
+        u.language_preference = lang
     if 'role_id' in data: u.role_id = data['role_id']
     db.session.commit()
     if 'role_id' in data and data['role_id'] != old_role_id:

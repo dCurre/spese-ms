@@ -17,4 +17,5 @@ class User(db.Model):
     role_id = Column(BigInteger, ForeignKey('spese.user_roles.id'), nullable=True, server_default='2')
     role = relationship('UserRole', foreign_keys=[role_id])
     theme_preference = Column(String(20), nullable=True, default='auto')
+    language_preference = Column(String(5), nullable=True, default='ita')
     is_guest = Column(Boolean, nullable=False, default=False)
