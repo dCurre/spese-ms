@@ -57,6 +57,8 @@ def user_to_dict(u):
         "paid_list_shown": u.paid_list_shown,
         "theme_preference": u.theme_preference,
         "language_preference": u.language_preference,
+        "app_theme_preference": u.app_theme_preference,
+        "app_language_preference": u.app_language_preference,
         "role": u.role.name if u.role else None,
         "is_guest": bool(u.is_guest),
     }
@@ -293,6 +295,12 @@ def update_user(user_id):
         if lang not in ('it', 'en'):
             raise ValidationError("Lingua non supportata (valori ammessi: 'it', 'en')")
         u.language_preference = lang
+    if 'app_theme_preference' in data: u.app_theme_preference = data['app_theme_preference']
+    if 'app_language_preference' in data:
+        app_lang = data['app_language_preference']
+        if app_lang not in ('it', 'en'):
+            raise ValidationError("Lingua non supportata (valori ammessi: 'it', 'en')")
+        u.app_language_preference = app_lang
     if 'role_id' in data: u.role_id = data['role_id']
     db.session.commit()
     if 'role_id' in data and data['role_id'] != old_role_id:
