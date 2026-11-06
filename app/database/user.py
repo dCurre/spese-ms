@@ -18,4 +18,6 @@ class User(db.Model):
     role = relationship('UserRole', foreign_keys=[role_id])
     theme_preference = Column(String(20), nullable=True, default='auto')
     language_preference = Column(String(5), nullable=True, default='it')
+    app_theme_preference = Column(String(20), nullable=True, default='default')
+    app_language_preference = Column(String(5), nullable=True, default='it')
     is_guest = Column(Boolean, nullable=False, default=False)
