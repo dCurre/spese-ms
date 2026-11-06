@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+#
+# pre-push — bump incrementale AUTOMATICO di VERSION a ogni push.
+#
+# Come funziona (un solo `git push` da parte tua):
+#   1. Capisce quali commit stanno per essere pushati.
+#   2. Se tra quei commit VERSION è già cambiata → non ribumpa (niente doppio bump).
+#   3. Altrimenti incrementa la patch di VERSION e fa `--amend` sull'ultimo commit.
+#   4. Aborta il push corrente e rilancia lui il push del nuovo HEAD → a GitHub arriva
+#      UN SOLO push. L'`error: failed to push` finale è ATTESO.
+#
+# Attivazione (una tantum dopo un clone):  git config core.hooksPath scripts/hooks
+#
+# stdin: <local ref> <local sha> <remote ref> <remote sha>  (una riga per ref)
+
+set -euo pipefail
+
+if [ "${SHIP_REPUSH:-}" = "1" ]; then
+  exit 0
+fi
+
+remote_name="$1"
+
+cd "$(git rev-parse --show-toplevel)"
+
+VERSION_FILE="VERSION"
+[ -f "$VERSION_FILE" ] || exit 0
+
+local_sha=""
+remote_sha=""
+remote_ref=""
+while read -r lref lsha rref rsha; do
+  if [ "$lsha" = "0000000000000000000000000000000000000000" ]; then
+    continue
+  fi
+  local_sha="$lsha"
+  remote_ref="$rref"
+  remote_sha="$rsha"
+  break
+done
+
+[ -n "$local_sha" ] || exit 0
+
+zero="0000000000000000000000000000000000000000"
+if [ "$remote_sha" = "$zero" ]; then
+  range_spec=$(git rev-list "$local_sha" --not --remotes="$remote_name" 2>/dev/null || git rev-list "$local_sha" -n 50)
+else
+  range_spec=$(git rev-list "${remote_sha}..${local_sha}")
+fi
+
+[ -n "$range_spec" ] || exit 0
+
+if [ "$remote_sha" = "$zero" ]; then
+  changed=$(git log "$local_sha" --not --remotes="$remote_name" --name-only --pretty=format: 2>/dev/null | grep -Fx "$VERSION_FILE" || true)
+else
+  changed=$(git log "${remote_sha}..${local_sha}" --name-only --pretty=format: | grep -Fx "$VERSION_FILE" || true)
+fi
+if [ -n "$changed" ]; then
+  exit 0
+fi
+
+CURRENT=$(tr -d '[:space:]' < "$VERSION_FILE")
+IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+MAJOR=${MAJOR:-0}; MINOR=${MINOR:-0}; PATCH=${PATCH:-0}
+NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+
+printf '%s' "$NEW_VERSION" > "$VERSION_FILE"
+git add "$VERSION_FILE"
+git commit --amend --no-edit --quiet
+
+echo "pre-push: VERSION ${CURRENT} -> ${NEW_VERSION} (inclusa nell'ultimo commit)." >&2
+echo "pre-push: rilancio il push del commit aggiornato..." >&2
+
+SHIP_REPUSH=1 git push "$remote_name" "HEAD:${remote_ref}"
+
+echo "pre-push: push completato dall'hook (versione bumpata). Il push originale è stato annullato apposta." >&2
+exit 1
