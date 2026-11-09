@@ -80,6 +80,35 @@ def update_expenses_list(list_id):
     data = request.get_json() or {}
     if 'name' in data: el.name = data['name']
     if 'paid' in data: el.paid = data['paid']
+
+    if 'list_type' in data:
+        type_name = data['list_type']
+
+        # Solo il proprietario della lista può cambiarne il tipo.
+        requester_id = data.get('requester_id')
+        if not requester_id:
+            raise ValidationError("requester_id mancante")
+        if el.user_id != requester_id:
+            raise ForbiddenError("Non sei il proprietario della lista")
+
+        list_type = ListType.query.filter_by(name=type_name).first()
+        if not list_type:
+            raise ValidationError(f"Tipo lista non valido: {type_name}")
+        el.list_type_id = list_type.id
+
+        # Diventa personale: tutte le spese passano al proprietario della lista
+        # e i partecipanti vengono rimossi (una lista personale non ne ha).
+        if type_name == 'personal':
+            from app.database.expense import Expense
+            from app.database.expenses_list_participant import ExpensesListParticipant
+            Expense.query.filter_by(expense_list_id=el.id).update(
+                {Expense.expense_owner_user_id: el.user_id},
+                synchronize_session=False,
+            )
+            ExpensesListParticipant.query.filter_by(expenses_list_id=el.id).delete(
+                synchronize_session=False,
+            )
+
     db.session.commit()
     return jsonify({"message": "Lista aggiornata"}), 200
 
