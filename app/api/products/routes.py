@@ -4,6 +4,7 @@ from app.database import db
 from app.database.product import Product
 from app.database.purchase import Purchase
 from app.database.measurement_unit import MeasurementUnit
+from app.exceptions import ValidationError
 from app.schemas import parse_body, CreateProductSchema
 
 
@@ -92,6 +93,20 @@ def delete_product(product_id):
     db.session.delete(product)
     db.session.commit()
     return jsonify({"message": "Prodotto eliminato"}), 200
+
+
+@api.route('/products/bulk-delete', methods=['POST'])
+def bulk_delete_products():
+    data = request.get_json() or {}
+    ids = data.get('ids')
+    if not ids:
+        raise ValidationError("ids mancante o vuoto")
+    # purchases.product_id ha ON DELETE CASCADE a livello DB: cancellando i
+    # prodotti, gli acquisti collegati vengono rimossi automaticamente (come
+    # fa la DELETE singola via db.session.delete).
+    deleted = Product.query.filter(Product.id.in_(ids)).delete(synchronize_session=False)
+    db.session.commit()
+    return jsonify({"deleted": deleted, "message": f"{deleted} prodotti eliminati"}), 200
 
 
 def _serialize_product(product, purchase_count=0, min_price=None):

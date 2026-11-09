@@ -97,7 +97,9 @@ def update_expenses_list(list_id):
         el.list_type_id = list_type.id
 
         # Diventa personale: tutte le spese passano al proprietario della lista
-        # e i partecipanti vengono rimossi (una lista personale non ne ha).
+        # e gli altri partecipanti vengono rimossi. L'owner e' esso stesso un
+        # partecipante (ha un record in expenses_list_participants): va mantenuto,
+        # cosi' una lista personale resta con 1 partecipante (il proprietario).
         if type_name == 'personal':
             from app.database.expense import Expense
             from app.database.expenses_list_participant import ExpensesListParticipant
@@ -105,9 +107,10 @@ def update_expenses_list(list_id):
                 {Expense.expense_owner_user_id: el.user_id},
                 synchronize_session=False,
             )
-            ExpensesListParticipant.query.filter_by(expenses_list_id=el.id).delete(
-                synchronize_session=False,
-            )
+            ExpensesListParticipant.query.filter(
+                ExpensesListParticipant.expenses_list_id == el.id,
+                ExpensesListParticipant.user_id != el.user_id,
+            ).delete(synchronize_session=False)
 
     db.session.commit()
     return jsonify({"message": "Lista aggiornata"}), 200
@@ -186,3 +189,22 @@ def delete_expenses_list(list_id):
     db.session.delete(expenses_list)
     db.session.commit()
     return jsonify({"message": "Lista eliminata"}), 200
+
+
+@api.route('/expenses-lists/bulk-delete', methods=['POST'])
+def bulk_delete_expenses_lists():
+    data = request.get_json() or {}
+    ids = data.get('ids')
+    if not ids:
+        raise ValidationError("ids mancante o vuoto")
+    # Le FK di expenses/expenses_list_participants verso expenses_lists sono
+    # NO ACTION a livello DB: il cascade e' gestito dall'ORM (relationship
+    # cascade='all, delete-orphan'). Per replicare la DELETE singola senza
+    # lasciare righe orfane, cancelliamo per oggetto cosi' da far scattare
+    # il cascade ORM su spese e partecipanti.
+    lists = ExpensesList.query.filter(ExpensesList.id.in_(ids)).all()
+    for el in lists:
+        db.session.delete(el)
+    db.session.commit()
+    deleted = len(lists)
+    return jsonify({"deleted": deleted, "message": f"{deleted} liste eliminate"}), 200

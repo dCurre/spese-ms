@@ -237,6 +237,24 @@ def delete_shopping_list(list_id):
     return jsonify({"message": "Checklist eliminata"}), 200
 
 
+@api.route('/shopping-lists/bulk-delete', methods=['POST'])
+def bulk_delete_shopping_lists():
+    data = request.get_json() or {}
+    ids = data.get('ids')
+    if not ids:
+        raise ValidationError("ids mancante o vuoto")
+    # Categorie/articoli/partecipanti e invite-token sono gestiti dal cascade
+    # ORM (relationship cascade='all, delete-orphan'); le FK di items e
+    # participants verso shopping_lists sono NO ACTION a livello DB. Cancelliamo
+    # per oggetto per replicare la DELETE singola senza lasciare righe orfane.
+    lists = ShoppingList.query.filter(ShoppingList.id.in_(ids)).all()
+    for sl in lists:
+        db.session.delete(sl)
+    db.session.commit()
+    deleted = len(lists)
+    return jsonify({"deleted": deleted, "message": f"{deleted} checklist eliminate"}), 200
+
+
 @api.route('/shopping-lists/<int:list_id>/invite-token', methods=['POST'])
 def generate_invite_token(list_id):
     sl = ShoppingList.query.get_or_404(list_id)

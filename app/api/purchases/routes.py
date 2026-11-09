@@ -5,6 +5,7 @@ from app.database import db
 from app.database.purchase import Purchase
 from app.database.product import Product
 from app.database.measurement_unit import MeasurementUnit
+from app.exceptions import ValidationError
 from app.schemas import parse_body, CreatePurchaseSchema
 
 
@@ -67,6 +68,17 @@ def delete_purchase(purchase_id):
     db.session.delete(purchase)
     db.session.commit()
     return jsonify({"message": "Acquisto eliminato"}), 200
+
+
+@api.route('/purchases/bulk-delete', methods=['POST'])
+def bulk_delete_purchases():
+    data = request.get_json() or {}
+    ids = data.get('ids')
+    if not ids:
+        raise ValidationError("ids mancante o vuoto")
+    deleted = Purchase.query.filter(Purchase.id.in_(ids)).delete(synchronize_session=False)
+    db.session.commit()
+    return jsonify({"deleted": deleted, "message": f"{deleted} acquisti eliminati"}), 200
 
 
 @api.route('/products/<int:product_id>/price-history', methods=['GET'])
