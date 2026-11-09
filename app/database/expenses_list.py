@@ -2,9 +2,10 @@ from sqlalchemy import Column, BigInteger, String, Boolean, TIMESTAMP, ForeignKe
 from sqlalchemy.orm import relationship
 
 from app.database import db
+from app.database.mixins import DeltaSyncMixin
 
 
-class ExpensesList(db.Model):
+class ExpensesList(DeltaSyncMixin, db.Model):
     __tablename__ = 'expenses_lists'
     __table_args__ = {'schema': 'spese'}
 

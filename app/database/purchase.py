@@ -1,8 +1,9 @@
 from sqlalchemy import Column, BigInteger, String, Text, Date, Numeric, ForeignKey
 from app.database import db
+from app.database.mixins import DeltaSyncMixin
 
 
-class Purchase(db.Model):
+class Purchase(DeltaSyncMixin, db.Model):
     __tablename__ = 'purchases'
     __table_args__ = {'schema': 'spese'}
 

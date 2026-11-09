@@ -11,10 +11,10 @@ from app.schemas import parse_body, CreatePurchaseSchema
 
 @api.route('/products/<int:product_id>/purchases', methods=['GET'])
 def get_product_purchases(product_id):
-    Product.query.get_or_404(product_id)
+    Product.query.filter_by(id=product_id, deleted=False).first_or_404()
     purchases = (
         Purchase.query
-        .filter_by(product_id=product_id)
+        .filter_by(product_id=product_id, deleted=False)
         .order_by(Purchase.purchased_at.desc())
         .all()
     )
@@ -27,6 +27,24 @@ def get_product_purchases(product_id):
 def create_purchase():
     data = parse_body(CreatePurchaseSchema)
     Product.query.get_or_404(data['product_id'])
+    client_id = data.get('client_id')
+
+    # Create idempotente: client_id gia' visto per lo stesso prodotto -> update.
+    existing = None
+    if client_id:
+        existing = Purchase.query.filter_by(product_id=data['product_id'], client_id=client_id).first()
+    if existing:
+        existing.user_id = data['user_id']
+        existing.purchased_at = data['purchased_at']
+        existing.price = data['price']
+        existing.quantity = data['quantity']
+        existing.unit_id = data['unit_id']
+        existing.store = data.get('store')
+        existing.notes = data.get('notes')
+        existing.deleted = False
+        db.session.commit()
+        return jsonify({"id": existing.id, "client_id": existing.client_id, "message": "Acquisto aggiornato"}), 200
+
     purchase = Purchase(
         product_id=data['product_id'],
         user_id=data['user_id'],
@@ -36,15 +54,16 @@ def create_purchase():
         unit_id=data['unit_id'],
         store=data.get('store'),
         notes=data.get('notes'),
+        client_id=client_id,
     )
     db.session.add(purchase)
     db.session.commit()
-    return jsonify({"id": purchase.id, "message": "Acquisto registrato"}), 201
+    return jsonify({"id": purchase.id, "client_id": purchase.client_id, "message": "Acquisto registrato"}), 201
 
 
 @api.route('/purchases/<int:purchase_id>', methods=['PUT'])
 def update_purchase(purchase_id):
-    purchase = Purchase.query.get_or_404(purchase_id)
+    purchase = Purchase.query.filter_by(id=purchase_id, deleted=False).first_or_404()
     data = request.get_json() or {}
     if 'purchased_at' in data:
         purchase.purchased_at = data['purchased_at']
@@ -64,8 +83,9 @@ def update_purchase(purchase_id):
 
 @api.route('/purchases/<int:purchase_id>', methods=['DELETE'])
 def delete_purchase(purchase_id):
-    purchase = Purchase.query.get_or_404(purchase_id)
-    db.session.delete(purchase)
+    # Soft-delete (updated_at aggiornato dal trigger DB).
+    purchase = Purchase.query.filter_by(id=purchase_id, deleted=False).first_or_404()
+    purchase.deleted = True
     db.session.commit()
     return jsonify({"message": "Acquisto eliminato"}), 200
 
@@ -76,7 +96,9 @@ def bulk_delete_purchases():
     ids = data.get('ids')
     if not ids:
         raise ValidationError("ids mancante o vuoto")
-    deleted = Purchase.query.filter(Purchase.id.in_(ids)).delete(synchronize_session=False)
+    # Soft-delete di piu' acquisti (nessuna rimozione fisica).
+    deleted = Purchase.query.filter(Purchase.id.in_(ids), Purchase.deleted == False) \
+        .update({'deleted': True}, synchronize_session=False)
     db.session.commit()
     return jsonify({"deleted": deleted, "message": f"{deleted} acquisti eliminati"}), 200
 
@@ -88,7 +110,7 @@ def get_price_history(product_id):
     from_date = request.args.get('from')
     to_date = request.args.get('to')
 
-    query = Purchase.query.filter_by(product_id=product_id)
+    query = Purchase.query.filter_by(product_id=product_id, deleted=False)
     if from_date:
         query = query.filter(Purchase.purchased_at >= from_date)
     if to_date:
@@ -133,6 +155,7 @@ def _serialize_purchase(purchase):
     unit_price = float(purchase.price) / float(purchase.quantity)
     return {
         "id": purchase.id,
+        "client_id": purchase.client_id,
         "product_id": purchase.product_id,
         "user_id": purchase.user_id,
         "purchased_at": str(purchase.purchased_at),
@@ -143,4 +166,6 @@ def _serialize_purchase(purchase):
         "unit_price": round(unit_price, 4),
         "store": purchase.store,
         "notes": purchase.notes,
+        "updated_at": purchase.updated_at,
+        "deleted": purchase.deleted,
     }
