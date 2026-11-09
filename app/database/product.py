@@ -1,8 +1,9 @@
 from sqlalchemy import Column, BigInteger, String, ForeignKey
 from app.database import db
+from app.database.mixins import DeltaSyncMixin
 
 
-class Product(db.Model):
+class Product(DeltaSyncMixin, db.Model):
     __tablename__ = 'products'
     __table_args__ = {'schema': 'spese'}
 

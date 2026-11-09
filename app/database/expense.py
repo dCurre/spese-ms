@@ -2,9 +2,10 @@ from sqlalchemy import Column, Integer, BigInteger, String, Numeric, DateTime, F
 from sqlalchemy.orm import relationship
 
 from app.database import db
+from app.database.mixins import DeltaSyncMixin
 
 
-class Expense(db.Model):
+class Expense(DeltaSyncMixin, db.Model):
     __tablename__ = 'expenses'
     __table_args__ = (
         ForeignKeyConstraint(['expense_list_id'], ['spese.expenses_lists.id'], name='expenses_expenses_list_fk'),
@@ -16,7 +17,7 @@ class Expense(db.Model):
     name = Column(String(255), nullable=True)
     amount = Column(Numeric(10, 2), nullable=True)
     expense_owner_user_id = Column(BigInteger, nullable=False)
-    updated_at = Column(DateTime, nullable=True)
+    # updated_at, deleted, client_id forniti da DeltaSyncMixin.
     modified_by = Column(Integer, nullable=True)
     expense_list_id = Column(Integer, nullable=False)
     expense_date = Column(DateTime, nullable=False)

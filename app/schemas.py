@@ -40,6 +40,7 @@ class CreateExpenseSchema(Schema):
     expense_list_id = fields.Int(required=True)
     expense_date = fields.Str(required=True, validate=validate.Length(min=1))
     expense_type_id = fields.Int(load_default=None, allow_none=True)
+    client_id = fields.Str(load_default=None, allow_none=True, validate=validate.Length(max=36))
 
 
 class CreateExpensesListSchema(Schema):
@@ -50,6 +51,7 @@ class CreateExpensesListSchema(Schema):
     user_id = fields.Int(required=True)
     paid = fields.Bool(load_default=False)
     list_type = fields.Str(load_default="shared")
+    client_id = fields.Str(load_default=None, allow_none=True, validate=validate.Length(max=36))
 
 
 class CreateShoppingListSchema(Schema):
@@ -103,6 +105,7 @@ class CreateProductSchema(Schema):
     name = fields.Str(required=True, validate=validate.Length(min=1, max=150))
     brand = fields.Str(load_default=None, allow_none=True, validate=validate.Length(max=100))
     default_unit_id = fields.Int(required=True)
+    client_id = fields.Str(load_default=None, allow_none=True, validate=validate.Length(max=36))
 
 
 class CreatePurchaseSchema(Schema):
@@ -117,3 +120,4 @@ class CreatePurchaseSchema(Schema):
     unit_id = fields.Int(required=True)
     store = fields.Str(load_default=None, allow_none=True, validate=validate.Length(max=150))
     notes = fields.Str(load_default=None, allow_none=True)
+    client_id = fields.Str(load_default=None, allow_none=True, validate=validate.Length(max=36))
