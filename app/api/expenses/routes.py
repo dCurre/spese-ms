@@ -5,6 +5,7 @@ from app.api import api
 from app.database import db
 from app.database.expense import Expense
 from app.database.expense_type import ExpenseType
+from app.exceptions import ValidationError
 from app.schemas import parse_body, CreateExpenseSchema
 
 
@@ -97,3 +98,14 @@ def delete_expense(expense_id):
     db.session.delete(expense)
     db.session.commit()
     return jsonify({"message": "Spesa eliminata"}), 200
+
+
+@api.route('/expenses/bulk-delete', methods=['POST'])
+def bulk_delete_expenses():
+    data = request.get_json() or {}
+    ids = data.get('ids')
+    if not ids:
+        raise ValidationError("ids mancante o vuoto")
+    deleted = Expense.query.filter(Expense.id.in_(ids)).delete(synchronize_session=False)
+    db.session.commit()
+    return jsonify({"deleted": deleted, "message": f"{deleted} spese eliminate"}), 200
