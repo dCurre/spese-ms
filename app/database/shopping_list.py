@@ -1,9 +1,10 @@
 from sqlalchemy import Column, BigInteger, String, Boolean, TIMESTAMP, ForeignKey, Integer
 from sqlalchemy.orm import relationship
 from app.database import db
+from app.database.mixins import DeltaSyncMixin
 
 
-class ShoppingList(db.Model):
+class ShoppingList(DeltaSyncMixin, db.Model):
     __tablename__ = 'shopping_lists'
     __table_args__ = {'schema': 'spese'}
 
@@ -22,7 +23,7 @@ class ShoppingList(db.Model):
     participants = relationship('ShoppingListParticipant', back_populates='shopping_list', cascade='all, delete-orphan')
 
 
-class ShoppingCategory(db.Model):
+class ShoppingCategory(DeltaSyncMixin, db.Model):
     __tablename__ = 'shopping_categories'
     __table_args__ = {'schema': 'spese'}
 
@@ -39,7 +40,7 @@ class ShoppingCategory(db.Model):
     parent = relationship('ShoppingCategory', back_populates='children', remote_side='ShoppingCategory.id')
 
 
-class ShoppingItem(db.Model):
+class ShoppingItem(DeltaSyncMixin, db.Model):
     __tablename__ = 'shopping_items'
     __table_args__ = {'schema': 'spese'}
 
