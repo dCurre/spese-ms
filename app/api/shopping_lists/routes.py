@@ -209,7 +209,21 @@ def update_shopping_list(list_id):
     data = request.get_json() or {}
     if 'name' in data: sl.name = data['name']
     if 'completed' in data: sl.completed = data['completed']
-    if 'list_type' in data: sl.list_type = data['list_type']
+    if 'list_type' in data:
+        # Solo il proprietario della lista può cambiarne il tipo.
+        requester_id = data.get('requester_id')
+        if not requester_id:
+            raise ValidationError("requester_id mancante")
+        if sl.owner_id != requester_id:
+            raise ForbiddenError("Non sei il proprietario della lista")
+
+        sl.list_type = data['list_type']
+        # Diventa personale: rimuovi i partecipanti (una lista personale non ne ha).
+        # Le checklist non hanno "owner delle spese", quindi non serve riassegnare nulla.
+        if data['list_type'] == 'personal':
+            ShoppingListParticipant.query.filter_by(shopping_list_id=sl.id).delete(
+                synchronize_session=False,
+            )
     if 'starred' in data: sl.starred = data['starred']
     db.session.commit()
     return jsonify({"message": "Checklist aggiornata"}), 200
