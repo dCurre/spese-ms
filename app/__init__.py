@@ -1,7 +1,9 @@
 import os
 import traceback
 import logging
+from datetime import datetime, date
 from flask import Flask, jsonify, request
+from flask.json.provider import DefaultJSONProvider
 from werkzeug.exceptions import HTTPException
 from marshmallow import ValidationError as MarshmallowValidationError
 from app.api import api
@@ -9,6 +11,21 @@ from app.database import db
 from config import Config
 from flask_cors import CORS
 from app.exceptions import AppError
+
+
+class ISOJSONProvider(DefaultJSONProvider):
+    """Serializza datetime/date in ISO 8601 (es. '2026-11-09T15:18:22').
+
+    Il default di Flask emette l'HTTP-date RFC 1123 ('Mon, 09 Nov 2026 ...'),
+    non ISO: il delta sync usa server_time come prossimo `since` e ha bisogno
+    di un formato ISO round-trippabile. Formato coerente su tutte le API.
+    """
+
+    @staticmethod
+    def default(o):
+        if isinstance(o, (datetime, date)):
+            return o.isoformat()
+        return DefaultJSONProvider.default(o)
 
 logging.basicConfig(
     level=logging.ERROR,
@@ -19,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 def create_app():
     app = Flask(__name__)
+    app.json = ISOJSONProvider(app)
 
     raw_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "").strip()
     if raw_origins:

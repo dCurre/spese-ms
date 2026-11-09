@@ -60,6 +60,7 @@ class CreateShoppingListSchema(Schema):
     owner_id = fields.Int(required=True)
     list_type = fields.Str(load_default="personal")
     completed = fields.Bool(load_default=False)
+    client_id = fields.Str(load_default=None, allow_none=True, validate=validate.Length(max=36))
 
 
 class CreateShoppingItemSchema(Schema):
@@ -72,6 +73,7 @@ class CreateShoppingItemSchema(Schema):
     checked = fields.Bool(load_default=False)
     sort_order = fields.Int(load_default=0)
     category_id = fields.Int(load_default=None, allow_none=True)
+    client_id = fields.Str(load_default=None, allow_none=True, validate=validate.Length(max=36))
 
 
 class CreateShoppingCategorySchema(Schema):
@@ -82,6 +84,7 @@ class CreateShoppingCategorySchema(Schema):
     name = fields.Str(required=True, validate=validate.Length(min=1))
     parent_id = fields.Int(load_default=None, allow_none=True)
     sort_order = fields.Int(load_default=0)
+    client_id = fields.Str(load_default=None, allow_none=True, validate=validate.Length(max=36))
 
 
 class CreateMeasurementUnitSchema(Schema):
