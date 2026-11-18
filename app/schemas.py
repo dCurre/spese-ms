@@ -50,7 +50,8 @@ class CreateExpensesListSchema(Schema):
     name = fields.Str(required=True, validate=validate.Length(min=1))
     user_id = fields.Int(required=True)
     paid = fields.Bool(load_default=False)
-    list_type = fields.Str(load_default="shared")
+    # Obbligatorio: se manca, la richiesta è rifiutata (400) invece di indovinare il tipo.
+    list_type = fields.Str(required=True, validate=validate.OneOf(["personal", "shared"]))
     client_id = fields.Str(load_default=None, allow_none=True, validate=validate.Length(max=36))
 
 

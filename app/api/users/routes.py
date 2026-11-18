@@ -127,7 +127,6 @@ def get_user_expenses_lists_by_email(email):
             (ExpensesList.user_id == u.id) |
             ExpensesList.id.in_(participated_ids)
         )
-        .options(joinedload(ExpensesList.list_type))
         .order_by(ExpensesList.id)
         .all()
     )
@@ -158,8 +157,7 @@ def get_user_expenses_lists_by_email(email):
                 "user_id": el.user_id,
                 "paid": el.paid,
                 "created_at": el.created_at,
-                "list_type": el.list_type.name if el.list_type else "shared",
-                "max_participants": el.list_type.max_participants if el.list_type else 8,
+                "list_type": el.list_type,
                 "expenses_count": exps_by_list.get(el.id, 0),
                 "participants_count": parts_by_list.get(el.id, 0),
             }

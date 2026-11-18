@@ -15,6 +15,7 @@ class ExpensesList(DeltaSyncMixin, db.Model):
     user = relationship('User', backref=db.backref('expenses_lists', cascade='all, delete-orphan'))
     paid = Column(Boolean, nullable=True)
     created_at = Column(TIMESTAMP, nullable=True, server_default='now()')
-    list_type_id = Column(BigInteger, ForeignKey('spese.expenses_list_types.id'), nullable=False, server_default='1')
-    list_type = relationship('ListType', foreign_keys=[list_type_id])
+    # Tipo lista come stringa ('personal' | 'shared'), come shopping_lists. Default 'personal':
+    # condividere è una scelta esplicita. (Prima era una FK a expenses_list_types con default shared.)
+    list_type = Column(String(20), nullable=False, server_default='personal')
     participants = relationship('ExpensesListParticipant', back_populates='expenses_list', cascade='all, delete-orphan')

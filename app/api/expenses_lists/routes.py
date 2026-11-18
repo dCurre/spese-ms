@@ -8,10 +8,12 @@ from app.database import db
 from app.database.expenses_list import ExpensesList
 from app.database.expense import Expense
 from app.database.expenses_list_participant import ExpensesListParticipant
-from app.database.list_type import ListType
 from app.exceptions import ValidationError, ForbiddenError
 from app.schemas import parse_body, CreateExpensesListSchema
 from app.audit import log_audit
+
+# Tipi di lista ammessi (colonna stringa, come shopping_lists).
+LIST_TYPES = ('personal', 'shared')
 
 
 def _parse_since(raw):
@@ -47,7 +49,7 @@ def get_expenses_lists():
     query = ExpensesList.query.filter_by(deleted=False)
     if show_paid is not None:
         query = query.filter_by(paid=show_paid)
-    expenses_lists = query.options(joinedload(ExpensesList.list_type)).order_by(ExpensesList.id).all()
+    expenses_lists = query.order_by(ExpensesList.id).all()
     return jsonify({
         "expenses_lists": [
             {
@@ -59,8 +61,7 @@ def get_expenses_lists():
                 "created_at": el.created_at,
                 "updated_at": el.updated_at,
                 "deleted": el.deleted,
-                "list_type": el.list_type.name if el.list_type else "shared",
-                "max_participants": el.list_type.max_participants if el.list_type else 8,
+                "list_type": el.list_type,
             }
             for el in expenses_lists
         ]
@@ -69,8 +70,7 @@ def get_expenses_lists():
 
 @api.route('/expenses-lists/<int:list_id>', methods=['GET'])
 def get_expenses_list(list_id):
-    el = ExpensesList.query.options(joinedload(ExpensesList.list_type)) \
-        .filter_by(id=list_id, deleted=False).first_or_404()
+    el = ExpensesList.query.filter_by(id=list_id, deleted=False).first_or_404()
     return jsonify({
         "id": el.id,
         "client_id": el.client_id,
@@ -80,8 +80,7 @@ def get_expenses_list(list_id):
         "created_at": el.created_at,
         "updated_at": el.updated_at,
         "deleted": el.deleted,
-        "list_type": el.list_type.name if el.list_type else "shared",
-        "max_participants": el.list_type.max_participants if el.list_type else 8,
+        "list_type": el.list_type,
         "participants": [
             {
                 "user_id": p.user_id,
@@ -100,8 +99,8 @@ def get_expenses_list(list_id):
 @api.route('/expenses-lists', methods=['POST'])
 def create_expenses_list():
     data = parse_body(CreateExpensesListSchema)
-    type_name = data.get('list_type', 'shared')
-    list_type = ListType.query.filter_by(name=type_name).first()
+    # list_type è garantito presente e valido dallo schema (required + OneOf).
+    list_type = data['list_type']
     client_id = data.get('client_id')
 
     # Create idempotente: client_id gia' visto per lo stesso user -> update.
@@ -111,7 +110,7 @@ def create_expenses_list():
     if existing:
         existing.name = data['name']
         existing.paid = data.get('paid', False)
-        existing.list_type_id = list_type.id if list_type else 1
+        existing.list_type = list_type
         existing.deleted = False
         db.session.commit()
         return jsonify({"id": existing.id, "client_id": existing.client_id, "message": "Lista aggiornata"}), 200
@@ -120,7 +119,7 @@ def create_expenses_list():
         name=data['name'],
         user_id=data['user_id'],
         paid=data.get('paid', False),
-        list_type_id=list_type.id if list_type else 1,
+        list_type=list_type,
         client_id=client_id,
     )
     db.session.add(expenses_list)
@@ -137,6 +136,8 @@ def update_expenses_list(list_id):
 
     if 'list_type' in data:
         type_name = data['list_type']
+        if type_name not in LIST_TYPES:
+            raise ValidationError(f"Tipo lista non valido: {type_name}")
 
         # Solo il proprietario della lista può cambiarne il tipo.
         requester_id = data.get('requester_id')
@@ -145,10 +146,7 @@ def update_expenses_list(list_id):
         if el.user_id != requester_id:
             raise ForbiddenError("Non sei il proprietario della lista")
 
-        list_type = ListType.query.filter_by(name=type_name).first()
-        if not list_type:
-            raise ValidationError(f"Tipo lista non valido: {type_name}")
-        el.list_type_id = list_type.id
+        el.list_type = type_name
 
         # Diventa personale: tutte le spese passano al proprietario della lista
         # e gli altri partecipanti vengono rimossi. L'owner e' esso stesso un
@@ -266,7 +264,7 @@ def _serialize_expenses_list_flat(el):
         "name": el.name,
         "user_id": el.user_id,
         "paid": el.paid,
-        "list_type_id": el.list_type_id,
+        "list_type": el.list_type,
         "created_at": el.created_at,
         "updated_at": el.updated_at,
         "deleted": el.deleted,
@@ -364,7 +362,11 @@ def expenses_batch_sync():
     for nl in (data.get('lists_create') or []):
         if not (nl.get('name') or '').strip():
             continue
-        list_type = ListType.query.filter_by(name=nl.get('list_type', 'shared')).first()
+        # list_type obbligatorio: se manca o non è valido, la richiesta è rifiutata (niente più
+        # fallback silenzioso a 'shared' che creava liste condivise per sbaglio).
+        list_type = nl.get('list_type')
+        if list_type not in LIST_TYPES:
+            raise ValidationError(f"list_type mancante o non valido nella lista '{nl.get('name')}'")
         cid = nl.get('client_id')
         el = None
         if cid:
@@ -372,14 +374,14 @@ def expenses_batch_sync():
         if el:
             el.name = nl['name']
             el.paid = nl.get('paid', False)
-            el.list_type_id = list_type.id if list_type else 1
+            el.list_type = list_type
             el.deleted = False
         else:
             el = ExpensesList(
                 name=nl['name'],
                 user_id=nl['user_id'],
                 paid=nl.get('paid', False),
-                list_type_id=list_type.id if list_type else 1,
+                list_type=list_type,
                 client_id=cid,
             )
             db.session.add(el)
