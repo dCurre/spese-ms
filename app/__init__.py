@@ -69,7 +69,6 @@ def create_app():
         return jsonify({"error": "Errore interno del server"}), 500
 
     with app.app_context():
-        from app.database.list_type import ListType
         from app.database.expense_type import ExpenseType
         from app.database.user_role import UserRole
         from app.database.user import User
