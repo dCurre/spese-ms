@@ -62,6 +62,13 @@ python run.py
 
 L'API sarà disponibile su `http://localhost:5000`.
 
+## Autenticazione
+
+Ogni chiamata richiede l'header `Authorization: Bearer <ID token Firebase>` (progetto `spese-dc`,
+email verificata). Fanno eccezione `/api/`, `/api/keepalive` e le GET di `/api/expense-types` e
+`/api/measurement-units`. In emergenza `AUTH_REQUIRED=false` disattiva il blocco (le chiamate
+senza token valido vengono solo registrate nei log): non lasciarlo attivo.
+
 ## Endpoint principali
 
 | Metodo | Path | Descrizione |

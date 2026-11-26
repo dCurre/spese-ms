@@ -10,6 +10,13 @@ class ValidationError(AppError):
     status_code = 400
 
 
+class UnauthorizedError(AppError):
+    status_code = 401
+
+    def __init__(self, message="Accesso non autorizzato"):
+        super().__init__(message)
+
+
 class ForbiddenError(AppError):
     status_code = 403
 

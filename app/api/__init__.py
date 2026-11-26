@@ -1,7 +1,10 @@
 from flask import Blueprint
 
+from app.auth import require_auth
+
 # Create a Blueprint for API routes
 api = Blueprint('api', __name__)
+api.before_request(require_auth)
 
 # Import routes so they get registered to the Blueprint
 from app.api import routes
