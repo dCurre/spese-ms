@@ -24,7 +24,8 @@ class CreateUserSchema(Schema):
 
     name = fields.Str(required=True, validate=validate.Length(min=1))
     surname = fields.Str(load_default="")
-    email = fields.Email(required=True)
+    # Gli ospiti non hanno email; per gli utenti veri la richiede la route.
+    email = fields.Email(load_default=None, allow_none=True)
     profile_image = fields.Str(load_default=None, allow_none=True)
     paid_list_shown = fields.Bool(load_default=True)
     is_guest = fields.Bool(load_default=False)
@@ -61,7 +62,7 @@ class CreateShoppingListSchema(Schema):
 
     name = fields.Str(required=True, validate=validate.Length(min=1))
     owner_id = fields.Int(required=True)
-    list_type = fields.Str(load_default="personal")
+    list_type = fields.Str(load_default="personal", validate=validate.OneOf(["personal", "shared"]))
     completed = fields.Bool(load_default=False)
     client_id = fields.Str(load_default=None, allow_none=True, validate=validate.Length(max=36))
 

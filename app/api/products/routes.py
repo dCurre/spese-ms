@@ -7,7 +7,8 @@ from app.database import db
 from app.database.product import Product
 from app.database.purchase import Purchase
 from app.database.measurement_unit import MeasurementUnit
-from app.exceptions import ValidationError
+from app.exceptions import ValidationError, ForbiddenError
+from app.access import current_user, is_admin, require_self
 from app.schemas import parse_body, CreateProductSchema
 
 
@@ -37,6 +38,19 @@ def _soft_delete_product(product):
         .update({'deleted': True}, synchronize_session=False)
 
 
+def _can_delete_product(product):
+    """Il catalogo è condiviso: si elimina un prodotto solo se nessun altro ci ha acquisti."""
+    return is_admin() or Purchase.query.filter(
+        Purchase.product_id == product.id, Purchase.deleted == False,  # noqa: E712
+        Purchase.user_id != current_user().id,
+    ).first() is None
+
+
+def _require_deletable(product):
+    if not _can_delete_product(product):
+        raise ForbiddenError("Il prodotto ha acquisti di altri utenti")
+
+
 @api.route('/products', methods=['GET'])
 def get_products():
     products = Product.query.filter_by(deleted=False).order_by(Product.name).all()
@@ -48,7 +62,7 @@ def get_products():
     min_prices = {}
     rows = db.session.query(
         Purchase.product_id, Purchase.price, Purchase.quantity
-    ).filter_by(deleted=False).all()
+    ).filter_by(deleted=False, user_id=current_user().id).all()
     for product_id, price, quantity in rows:
         counts[product_id] = counts.get(product_id, 0) + 1
         unit_price = round(float(price) / float(quantity), 4)
@@ -73,7 +87,8 @@ def get_product(product_id):
     product = Product.query.filter_by(id=product_id, deleted=False).first_or_404()
 
     rows = db.session.query(Purchase.price, Purchase.quantity).filter(
-        Purchase.product_id == product_id, Purchase.deleted == False
+        Purchase.product_id == product_id, Purchase.deleted == False,
+        Purchase.user_id == current_user().id,
     ).all()
     purchase_count = len(rows)
     min_price = None
@@ -135,6 +150,7 @@ def update_product(product_id):
 def delete_product(product_id):
     # Soft-delete: marca deleted=true il prodotto e propaga ai suoi acquisti.
     product = Product.query.filter_by(id=product_id, deleted=False).first_or_404()
+    _require_deletable(product)
     _soft_delete_product(product)
     db.session.commit()
     return jsonify({"message": "Prodotto eliminato"}), 200
@@ -149,6 +165,7 @@ def bulk_delete_products():
     # Soft-delete di piu' prodotti + relativi acquisti (nessuna rimozione fisica).
     products = Product.query.filter(Product.id.in_(ids), Product.deleted == False).all()
     for product in products:
+        _require_deletable(product)
         _soft_delete_product(product)
     db.session.commit()
     deleted = len(products)
@@ -211,6 +228,7 @@ def products_delta():
     user_id = request.args.get('user_id', type=int)
     if not user_id:
         raise ValidationError("user_id mancante")
+    require_self(user_id)
     since = _parse_since(request.args.get('since'))
 
     server_time = db.session.query(func.now()).scalar()
@@ -249,15 +267,16 @@ def products_batch_sync():
     data = request.get_json() or {}
     product_map = {}
     purchase_map = {}
+    me = current_user().id
 
     # --- DELETE (soft) ---
     for pid in (data.get('products_delete') or []):
         p = Product.query.filter_by(id=pid, deleted=False).first()
-        if p:
+        if p and _can_delete_product(p):
             _soft_delete_product(p)
     for puid in (data.get('purchases_delete') or []):
         pu = Purchase.query.get(puid)
-        if pu and not pu.deleted:
+        if pu and not pu.deleted and pu.user_id == me:
             pu.deleted = True
     db.session.flush()
 
@@ -298,9 +317,8 @@ def products_batch_sync():
         cid = npu.get('client_id')
         pu = None
         if cid and product_id is not None:
-            pu = Purchase.query.filter_by(product_id=product_id, client_id=cid).first()
+            pu = Purchase.query.filter_by(product_id=product_id, client_id=cid, user_id=me).first()
         if pu:
-            pu.user_id = npu['user_id']
             pu.purchased_at = npu['purchased_at']
             pu.price = npu['price']
             pu.quantity = npu['quantity']
@@ -311,7 +329,7 @@ def products_batch_sync():
         else:
             pu = Purchase(
                 product_id=product_id,
-                user_id=npu['user_id'],
+                user_id=me,
                 purchased_at=npu['purchased_at'],
                 price=npu['price'],
                 quantity=npu['quantity'],
@@ -339,7 +357,7 @@ def products_batch_sync():
 
     # --- UPDATE acquisti ---
     for upu in (data.get('purchases_update') or []):
-        pu = Purchase.query.filter_by(id=upu['id'], deleted=False).first()
+        pu = Purchase.query.filter_by(id=upu['id'], deleted=False, user_id=me).first()
         if not pu:
             continue
         if 'purchased_at' in upu:

@@ -21,3 +21,4 @@ from app.api.measurement_units import routes
 from app.api.products import routes
 from app.api.purchases import routes
 from app.api.keepalive import routes
+from app.api.bug_reports import routes

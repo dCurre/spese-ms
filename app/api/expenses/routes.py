@@ -10,6 +10,9 @@ from app.database.expenses_list import ExpensesList
 from app.database.expenses_list_participant import ExpensesListParticipant
 from app.exceptions import ValidationError
 from app.schemas import parse_body, CreateExpenseSchema
+from app.access import (
+    current_user, expense_list_ids, require_expense_list, require_expense_owner, require_self,
+)
 
 
 def parse_date(date_str: str) -> datetime:
@@ -18,7 +21,12 @@ def parse_date(date_str: str) -> datetime:
             return datetime.strptime(date_str, fmt)
         except ValueError:
             continue
-    return datetime.fromisoformat(date_str)
+        except TypeError:
+            break
+    try:
+        return datetime.fromisoformat(date_str)
+    except (TypeError, ValueError):
+        raise ValidationError("Data non valida (formato atteso yyyy-MM-dd)")
 
 
 def expense_to_dict(e, include_paid_list_shown=False):
@@ -50,13 +58,14 @@ def expense_to_dict(e, include_paid_list_shown=False):
 
 @api.route('/expenses', methods=['GET'])
 def get_expenses():
-    expenses = Expense.query.options(joinedload(Expense.user), joinedload(Expense.expense_type)).filter_by(deleted=False).order_by(Expense.id).all()
+    expenses = Expense.query.options(joinedload(Expense.user), joinedload(Expense.expense_type)).filter_by(deleted=False).filter(Expense.expense_list_id.in_(expense_list_ids())).order_by(Expense.id).all()
     return jsonify({"expenses": [expense_to_dict(e, include_paid_list_shown=True) for e in expenses]})
 
 
 @api.route('/expenses/<int:expense_id>', methods=['GET'])
 def get_expense(expense_id):
     e = Expense.query.options(joinedload(Expense.user), joinedload(Expense.expense_type)).filter_by(id=expense_id, deleted=False).first_or_404()
+    require_expense_list(e.expense_list_id)
     return jsonify(expense_to_dict(e, include_paid_list_shown=True))
 
 
@@ -85,6 +94,7 @@ def expenses_stats():
     user_id = request.args.get('user_id', type=int)
     if not user_id:
         raise ValidationError("user_id mancante")
+    require_self(user_id)
 
     granularity = (request.args.get('granularity') or 'month').lower()
     if granularity not in ('month', 'week', 'year'):
@@ -220,6 +230,8 @@ def expenses_stats():
 def create_expense():
     data = parse_body(CreateExpenseSchema)
     client_id = data.get('client_id')
+    require_expense_list(data['expense_list_id'])
+    require_expense_owner(data['expense_list_id'], data['expense_owner_user_id'])
 
     # Create idempotente: client_id gia' visto nella stessa lista -> update.
     existing = None
@@ -254,12 +266,16 @@ def create_expense():
 @api.route('/expenses/<int:expense_id>', methods=['PUT'])
 def update_expense(expense_id):
     e = Expense.query.filter_by(id=expense_id, deleted=False).first_or_404()
+    require_expense_list(e.expense_list_id)
     data = request.get_json() or {}
+    new_owner = data.get('expense_owner_user_id', e.expense_owner_user_id)
+    if new_owner != e.expense_owner_user_id:
+        require_expense_owner(e.expense_list_id, new_owner)
     if 'name' in data: e.name = data['name']
     if 'amount' in data: e.amount = data['amount']
     if 'expense_date' in data: e.expense_date = parse_date(data['expense_date'])
     if 'expense_owner_user_id' in data: e.expense_owner_user_id = data['expense_owner_user_id']
-    if 'modified_by' in data: e.modified_by = data['modified_by']
+    if 'modified_by' in data: e.modified_by = current_user().id
     if 'expense_type_id' in data: e.expense_type_id = data['expense_type_id']
     # updated_at e' gestito automaticamente dal trigger DB set_updated_at().
     db.session.commit()
@@ -268,6 +284,7 @@ def update_expense(expense_id):
 
 @api.route('/expenses/by-list/<int:list_id>', methods=['GET'])
 def get_expenses_by_list(list_id):
+    require_expense_list(list_id)
     expenses = Expense.query.options(joinedload(Expense.user), joinedload(Expense.expense_type)).filter_by(expense_list_id=list_id, deleted=False).order_by(Expense.id).all()
     return jsonify({"expenses": [expense_to_dict(e) for e in expenses]})
 
@@ -276,6 +293,7 @@ def get_expenses_by_list(list_id):
 def delete_expense(expense_id):
     # Soft-delete: marca deleted=true (updated_at aggiornato dal trigger DB).
     expense = Expense.query.filter_by(id=expense_id, deleted=False).first_or_404()
+    require_expense_list(expense.expense_list_id)
     expense.deleted = True
     db.session.commit()
     return jsonify({"message": "Spesa eliminata"}), 200
@@ -288,7 +306,8 @@ def bulk_delete_expenses():
     if not ids:
         raise ValidationError("ids mancante o vuoto")
     # Soft-delete di piu' spese (nessuna rimozione fisica).
-    deleted = Expense.query.filter(Expense.id.in_(ids), Expense.deleted == False) \
+    deleted = Expense.query.filter(Expense.id.in_(ids), Expense.deleted == False,
+                                   Expense.expense_list_id.in_(expense_list_ids())) \
         .update({'deleted': True}, synchronize_session=False)
     db.session.commit()
     return jsonify({"deleted": deleted, "message": f"{deleted} spese eliminate"}), 200

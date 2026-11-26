@@ -3,12 +3,16 @@ from datetime import datetime, timezone
 from app.api import api
 from app.database import db
 from app.database.expenses_list_participant import ExpensesListParticipant
-from app.exceptions import NotFoundError
+from app.database.expenses_list import ExpensesList
+from app.database.user import User
+from app.exceptions import NotFoundError, ForbiddenError, ValidationError
 from app.audit import log_audit
+from app.access import current_user, require_expense_list
 
 
 @api.route('/expenses-lists/<int:list_id>/participants', methods=['GET'])
 def get_participants(list_id):
+    require_expense_list(list_id)
     participants = ExpensesListParticipant.query.filter_by(expenses_list_id=list_id).all()
     return jsonify({
         "participants": [
@@ -29,10 +33,20 @@ def get_participants(list_id):
 
 @api.route('/expenses-lists/<int:list_id>/participants', methods=['POST'])
 def add_participant(list_id):
+    require_expense_list(list_id)
     data = request.get_json() or {}
+    target = db.session.get(User, data['user_id']) if data.get('user_id') else None
+    if target is None:
+        raise ValidationError("Utente inesistente")
+    if ExpensesListParticipant.query.filter_by(expenses_list_id=list_id, user_id=target.id).first():
+        return jsonify({"message": "Già partecipante"}), 200
+    # Le persone entrano solo col link di invito. Qui: se stessi o un ospite appena creato.
+    new_guest = target.is_guest and not target.participations and not target.expenses_lists
+    if target.id != current_user().id and not new_guest:
+        raise ForbiddenError("Per aggiungere una persona condividi il link di invito")
     participant = ExpensesListParticipant(
         expenses_list_id=list_id,
-        user_id=data['user_id'],
+        user_id=target.id,
         joined_at=datetime.now(timezone.utc),
     )
     db.session.add(participant)
@@ -43,6 +57,10 @@ def add_participant(list_id):
 
 @api.route('/expenses-lists/<int:list_id>/participants/<int:user_id>', methods=['DELETE'])
 def remove_participant(list_id, user_id):
+    require_expense_list(list_id)
+    me = current_user().id
+    if user_id != me and db.session.get(ExpensesList, list_id).user_id != me:
+        raise ForbiddenError("Solo il proprietario può rimuovere altri partecipanti")
     participant = ExpensesListParticipant.query.filter_by(
         expenses_list_id=list_id,
         user_id=user_id
@@ -55,8 +73,12 @@ def remove_participant(list_id, user_id):
 
 @api.route('/expenses-lists/<int:list_id>/participants/<int:user_id>/guest', methods=['DELETE'])
 def remove_guest_participant(list_id, user_id):
-    from app.database.user import User
     from app.database.expense import Expense
+    require_expense_list(list_id)
+    participant = ExpensesListParticipant.query.filter_by(
+        expenses_list_id=list_id,
+        user_id=user_id
+    ).first_or_404()
     guest = User.query.filter_by(id=user_id, is_guest=True).first_or_404()
 
     placeholder = User.query.filter_by(email='deleted@system.local').first()
@@ -68,10 +90,6 @@ def remove_guest_participant(list_id, user_id):
         expense_owner_user_id=user_id
     ).update({"expense_owner_user_id": placeholder.id})
 
-    participant = ExpensesListParticipant.query.filter_by(
-        expenses_list_id=list_id,
-        user_id=user_id
-    ).first_or_404()
     db.session.delete(participant)
     db.session.delete(guest)
     db.session.commit()

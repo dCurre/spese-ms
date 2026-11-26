@@ -3,6 +3,8 @@ from app.api import api
 from app.database import db
 from app.database.shopping_list import ShoppingCategory, ShoppingItem
 from app.schemas import parse_body, CreateShoppingCategorySchema
+from app.validation import boolean
+from app.access import require_shopping_list, require_category_in_list
 
 
 def _check_recursive(category_id, checked):
@@ -35,6 +37,8 @@ def soft_delete_category(category_id):
 def create_shopping_category():
     data = parse_body(CreateShoppingCategorySchema)
     client_id = data.get('client_id')
+    require_shopping_list(data['shopping_list_id'])
+    require_category_in_list(data.get('parent_id'), data['shopping_list_id'])
 
     # Create idempotente: client_id gia' visto nella stessa lista -> update.
     existing = None
@@ -66,10 +70,13 @@ def create_shopping_category():
 @api.route('/shopping-categories/<int:category_id>', methods=['PUT'])
 def update_shopping_category(category_id):
     cat = ShoppingCategory.query.filter_by(id=category_id, deleted=False).first_or_404()
+    require_shopping_list(cat.shopping_list_id)
     data = request.get_json() or {}
     if 'name' in data: cat.name = data['name']
     if 'sort_order' in data: cat.sort_order = data['sort_order']
-    if 'parent_id' in data: cat.parent_id = data['parent_id']
+    if 'parent_id' in data:
+        require_category_in_list(data['parent_id'], cat.shopping_list_id)
+        cat.parent_id = data['parent_id']
     db.session.commit()
     return jsonify({"message": "Categoria aggiornata"}), 200
 
@@ -77,7 +84,8 @@ def update_shopping_category(category_id):
 @api.route('/shopping-categories/<int:category_id>', methods=['DELETE'])
 def delete_shopping_category(category_id):
     # Soft-delete: marca deleted=true la categoria + articoli + sottocategorie.
-    ShoppingCategory.query.filter_by(id=category_id, deleted=False).first_or_404()
+    cat = ShoppingCategory.query.filter_by(id=category_id, deleted=False).first_or_404()
+    require_shopping_list(cat.shopping_list_id)
     soft_delete_category(category_id)
     db.session.commit()
     return jsonify({"message": "Categoria eliminata"}), 200
@@ -86,9 +94,10 @@ def delete_shopping_category(category_id):
 @api.route('/shopping-categories/<int:category_id>/check', methods=['PATCH'])
 def check_category(category_id):
     """Spunta/despunta ricorsivamente tutti gli item della categoria e sottocategorie."""
-    ShoppingCategory.query.filter_by(id=category_id, deleted=False).first_or_404()
+    cat = ShoppingCategory.query.filter_by(id=category_id, deleted=False).first_or_404()
+    require_shopping_list(cat.shopping_list_id)
     data = request.get_json() or {}
-    checked = data.get('checked', True)
+    checked = boolean(data.get('checked', True), 'checked')
     _check_recursive(category_id, checked)
     db.session.commit()
     return jsonify({"message": "Categoria aggiornata", "checked": checked}), 200

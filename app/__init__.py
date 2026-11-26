@@ -42,7 +42,12 @@ def create_app():
     if raw_origins:
         allowed_origins = [o.strip() for o in raw_origins.split(",") if o.strip()]
     else:
-        allowed_origins = "*"
+        # Solo la webapp (e il suo server di sviluppo). L'app Android non usa il CORS.
+        allowed_origins = [
+            "https://spese-dc.web.app",
+            "https://spese-dc.firebaseapp.com",
+            "http://localhost:4200",
+        ]
     CORS(app, resources={r"/*": {"origins": allowed_origins}}, supports_credentials=False)
 
     app.config.from_object(Config)

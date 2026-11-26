@@ -18,3 +18,5 @@ services:
         sync: false
       - key: DATASOURCE_PASSWORD
         sync: false
+      - key: GITHUB_BUGREPORT_TOKEN
+        sync: false

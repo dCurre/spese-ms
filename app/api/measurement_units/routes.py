@@ -1,5 +1,6 @@
 from flask import request, jsonify
 from app.api import api
+from app.access import require_admin
 from app.database import db
 from app.database.measurement_unit import MeasurementUnit
 from app.exceptions import ForbiddenError
@@ -27,6 +28,7 @@ def get_measurement_units():
 
 @api.route('/measurement-units', methods=['POST'])
 def create_measurement_unit():
+    require_admin()
     data = parse_body(CreateMeasurementUnitSchema)
     unit = MeasurementUnit(name=data['name'], symbol=data['symbol'], category=data['category'])
     db.session.add(unit)
@@ -36,6 +38,7 @@ def create_measurement_unit():
 
 @api.route('/measurement-units/<int:unit_id>', methods=['PUT'])
 def update_measurement_unit(unit_id):
+    require_admin()
     if unit_id in PROTECTED_IDS:
         raise ForbiddenError("Unità di misura non modificabile")
     unit = MeasurementUnit.query.get_or_404(unit_id)
@@ -52,6 +55,7 @@ def update_measurement_unit(unit_id):
 
 @api.route('/measurement-units/<int:unit_id>', methods=['DELETE'])
 def delete_measurement_unit(unit_id):
+    require_admin()
     if unit_id in PROTECTED_IDS:
         raise ForbiddenError("Unità di misura non eliminabile")
     unit = MeasurementUnit.query.get_or_404(unit_id)

@@ -1,5 +1,6 @@
 from flask import request, jsonify
 from app.api import api
+from app.access import require_admin
 from app.database import db
 from app.database.expense_type import ExpenseType
 from app.exceptions import ForbiddenError
@@ -18,6 +19,7 @@ def get_expense_types():
 
 @api.route('/expense-types', methods=['POST'])
 def create_expense_type():
+    require_admin()
     data = request.get_json() or {}
     t = ExpenseType(name=data['name'])
     db.session.add(t)
@@ -27,6 +29,7 @@ def create_expense_type():
 
 @api.route('/expense-types/<int:type_id>', methods=['PUT'])
 def update_expense_type(type_id):
+    require_admin()
     t = ExpenseType.query.get_or_404(type_id)
     data = request.get_json() or {}
     if 'name' in data:
@@ -37,6 +40,7 @@ def update_expense_type(type_id):
 
 @api.route('/expense-types/<int:type_id>', methods=['DELETE'])
 def delete_expense_type(type_id):
+    require_admin()
     if type_id in PROTECTED_DELETE_IDS:
         raise ForbiddenError("Tipologia non eliminabile")
     t = ExpenseType.query.get_or_404(type_id)

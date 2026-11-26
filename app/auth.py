@@ -1,11 +1,11 @@
 """Verifica dell'ID token Firebase richiesto su ogni chiamata API."""
 import logging
-import os
 
 import jwt
 from flask import g, request
 
-from app.exceptions import UnauthorizedError
+from app.exceptions import UnauthorizedError, TooManyRequestsError
+from app.ratelimit import allow
 
 logger = logging.getLogger(__name__)
 
@@ -17,12 +17,15 @@ jwks = jwt.PyJWKClient(
     lifespan=3600,
 )
 
-# Senza login: stato, keepalive e i cataloghi in sola lettura usati dalla modalità ospite dell'app.
+MAX_PER_MINUTE = 600  # per utente: largo per il sync, stretto per chi abusa
+
+# Senza login: stato, keepalive, e ciò che serve alla modalità ospite dell'app.
 PUBLIC_ENDPOINTS = {
     'api.api_home',
     'api.keepalive',
     'api.get_expense_types',
     'api.get_measurement_units',
+    'api.create_bug_report',  # anche gli ospiti segnalano; limite proprio
 }
 
 
@@ -48,7 +51,8 @@ def require_auth():
     except jwt.PyJWKClientConnectionError:
         raise  # chiavi Google irraggiungibili: è un errore del server (500), non del client
     except jwt.PyJWTError as e:
-        # AUTH_REQUIRED=false è l'interruttore di emergenza: registra e lascia passare.
-        if os.environ.get('AUTH_REQUIRED', 'true').lower() != 'false':
-            raise UnauthorizedError() from e
-        logger.error("Auth non obbligatoria: %s %s senza token valido (%s)", request.method, request.path, e)
+        # Nel log il motivo e l'endpoint, non il path (può contenere email) né il token.
+        logger.error("Token rifiutato: %s %s (%s)", request.method, request.endpoint, e)
+        raise UnauthorizedError() from e
+    if not allow(('user', g.auth_email), MAX_PER_MINUTE, 60):
+        raise TooManyRequestsError()

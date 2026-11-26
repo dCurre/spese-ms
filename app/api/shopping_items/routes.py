@@ -3,7 +3,9 @@ from app.api import api
 from app.database import db
 from app.database.shopping_list import ShoppingItem
 from app.exceptions import ValidationError
+from app.validation import boolean
 from app.schemas import parse_body, CreateShoppingItemSchema
+from app.access import can_access_shopping_list, require_shopping_list, require_category_in_list
 
 
 def _norm_qty(value):
@@ -21,6 +23,8 @@ def _norm_qty(value):
 def create_shopping_item():
     data = parse_body(CreateShoppingItemSchema)
     client_id = data.get('client_id')
+    require_shopping_list(data['shopping_list_id'])
+    require_category_in_list(data.get('category_id'), data['shopping_list_id'])
 
     # Create idempotente: se arriva un client_id gia' visto nella stessa lista,
     # aggiorna la riga esistente invece di crearne una nuova (anti re-invio).
@@ -57,12 +61,15 @@ def create_shopping_item():
 @api.route('/shopping-items/<int:item_id>', methods=['PUT'])
 def update_shopping_item(item_id):
     item = ShoppingItem.query.filter_by(id=item_id, deleted=False).first_or_404()
+    require_shopping_list(item.shopping_list_id)
     data = request.get_json() or {}
     if 'name' in data: item.name = data['name']
     if 'quantity' in data: item.quantity = _norm_qty(data['quantity'])
     if 'checked' in data: item.checked = data['checked']
     if 'sort_order' in data: item.sort_order = data['sort_order']
-    if 'category_id' in data: item.category_id = data['category_id']
+    if 'category_id' in data:
+        require_category_in_list(data['category_id'], item.shopping_list_id)
+        item.category_id = data['category_id']
     db.session.commit()
     return jsonify({"message": "Articolo aggiornato"}), 200
 
@@ -70,6 +77,7 @@ def update_shopping_item(item_id):
 @api.route('/shopping-items/<int:item_id>/check', methods=['PATCH'])
 def toggle_shopping_item(item_id):
     item = ShoppingItem.query.filter_by(id=item_id, deleted=False).first_or_404()
+    require_shopping_list(item.shopping_list_id)
     data = request.get_json() or {}
     item.checked = data.get('checked', not item.checked)
     db.session.commit()
@@ -81,6 +89,7 @@ def delete_shopping_item(item_id):
     # Soft-delete: marca deleted=true (il trigger DB aggiorna updated_at) cosi'
     # il delta sync propaga la cancellazione all'app.
     item = ShoppingItem.query.filter_by(id=item_id, deleted=False).first_or_404()
+    require_shopping_list(item.shopping_list_id)
     item.deleted = True
     db.session.commit()
     return jsonify({"message": "Articolo eliminato"}), 200
@@ -94,7 +103,7 @@ def bulk_update_items():
 
     for u in updates:
         item = ShoppingItem.query.get(u['id'])
-        if not item or item.deleted:
+        if not item or item.deleted or not can_access_shopping_list(item.shopping_list_id):
             continue
         if 'name' in u: item.name = u['name']
         if 'quantity' in u: item.quantity = _norm_qty(u['quantity'])
@@ -103,7 +112,7 @@ def bulk_update_items():
     # Soft-delete.
     for item_id in delete_ids:
         item = ShoppingItem.query.get(item_id)
-        if item and not item.deleted:
+        if item and not item.deleted and can_access_shopping_list(item.shopping_list_id):
             item.deleted = True
 
     db.session.commit()
@@ -116,7 +125,8 @@ def check_all_items():
     list_id = data.get('shopping_list_id')
     if not list_id:
         raise ValidationError("shopping_list_id mancante")
-    checked = data.get('checked', True)
+    require_shopping_list(list_id)
+    checked = boolean(data.get('checked', True), 'checked')
     uncategorized_only = data.get('uncategorized_only', False)
     query = ShoppingItem.query.filter_by(shopping_list_id=list_id, deleted=False)
     if uncategorized_only:
@@ -132,7 +142,7 @@ def reorder_shopping_items():
     ordered_ids = data.get('ordered_ids', [])
     for idx, item_id in enumerate(ordered_ids):
         item = ShoppingItem.query.get(item_id)
-        if item and not item.deleted:
+        if item and not item.deleted and can_access_shopping_list(item.shopping_list_id):
             item.sort_order = idx
     db.session.commit()
     return jsonify({"message": "Ordine aggiornato"}), 200

@@ -1,7 +1,7 @@
 import os
 import uuid
 import json
-from flask import request, jsonify
+from flask import g, request, jsonify
 from sqlalchemy.orm import joinedload
 from sqlalchemy import func
 from supabase import create_client
@@ -14,6 +14,10 @@ from app.database.expenses_list_participant import ExpensesListParticipant
 from app.exceptions import ValidationError, ForbiddenError, NotFoundError
 from app.schemas import parse_body, UpsertUserSchema, CreateUserSchema
 from app.audit import log_audit
+from app.access import (
+    ADMIN_ROLES, SUPERADMIN, current_user, is_admin, role_name,
+    require_admin, require_self, require_self_or_admin,
+)
 
 def get_supabase():
     url = os.environ.get('SUPABASE_URL')
@@ -25,6 +29,20 @@ def get_supabase():
 BUCKET = os.environ.get('SUPABASE_STORAGE_BUCKET', 'profile-images')
 
 MAX_HISTORY = 4
+MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+
+def _image_type(data: bytes):
+    """(estensione, content-type) ricavati dai primi byte; None se non è un'immagine ammessa."""
+    if data.startswith(b'\xff\xd8\xff'):
+        return 'jpg', 'image/jpeg'
+    if data.startswith(b'\x89PNG\r\n\x1a\n'):
+        return 'png', 'image/png'
+    if data.startswith((b'GIF87a', b'GIF89a')):
+        return 'gif', 'image/gif'
+    if data[:4] == b'RIFF' and data[8:12] == b'WEBP':
+        return 'webp', 'image/webp'
+    return None
 
 def _get_history(u) -> list:
     try:
@@ -70,12 +88,14 @@ def user_query():
 
 @api.route('/users', methods=['GET'])
 def get_users():
+    require_admin()
     users = user_query().order_by(User.id).all()
     return jsonify({"users": [user_to_dict(u) for u in users]})
 
 
 @api.route('/users/<int:user_id>', methods=['GET'])
 def get_user(user_id):
+    require_self_or_admin(user_id)
     u = user_query().filter_by(id=user_id).first_or_404()
     return jsonify(user_to_dict(u))
 
@@ -84,6 +104,8 @@ def get_user(user_id):
 def get_user_by_email(email):
     from urllib.parse import unquote
     email = unquote(email)
+    if email != g.auth_email:
+        require_admin()
     u = user_query().filter_by(email=email).first_or_404()
     return jsonify(user_to_dict(u))
 
@@ -92,9 +114,9 @@ def get_user_by_email(email):
 def upsert_user_by_email():
     """Ritorna l'utente se esiste, altrimenti lo crea. Usato al login con Google."""
     data = parse_body(UpsertUserSchema)
-    email = data['email']
+    email = g.auth_email  # quella del token: l'email nel body non conta
 
-    u = user_query().filter_by(email=email).first()
+    u = user_query().filter_by(email=email, is_guest=False).first()
     if u:
         return jsonify(user_to_dict(u)), 200
 
@@ -108,7 +130,7 @@ def upsert_user_by_email():
     )
     db.session.add(u)
     db.session.commit()
-    u = user_query().filter_by(email=email).first()
+    u = user_query().filter_by(email=email, is_guest=False).first()
     return jsonify(user_to_dict(u)), 201
 
 
@@ -116,6 +138,8 @@ def upsert_user_by_email():
 def get_user_expenses_lists_by_email(email):
     from urllib.parse import unquote
     email = unquote(email)
+    if email != g.auth_email:
+        require_admin()
     u = user_query().filter_by(email=email).first_or_404()
     participated_ids = (
         db.session.query(ExpensesListParticipant.expenses_list_id)
@@ -125,7 +149,8 @@ def get_user_expenses_lists_by_email(email):
         ExpensesList.query
         .filter(
             (ExpensesList.user_id == u.id) |
-            ExpensesList.id.in_(participated_ids)
+            ExpensesList.id.in_(participated_ids),
+            ExpensesList.deleted == False,  # noqa: E712
         )
         .order_by(ExpensesList.id)
         .all()
@@ -168,23 +193,21 @@ def get_user_expenses_lists_by_email(email):
 
 @api.route('/users/<int:user_id>/profile-image', methods=['POST'])
 def upload_profile_image(user_id):
+    require_self(user_id)
     if 'file' not in request.files:
         raise ValidationError("Nessun file ricevuto")
 
-    file = request.files['file']
-    if not file.filename:
-        raise ValidationError("Nome file mancante")
-
-    ext = file.filename.rsplit('.', 1)[-1].lower()
-    if ext not in ('jpg', 'jpeg', 'png', 'webp', 'gif'):
-        raise ValidationError("Formato non supportato")
-
-    file_bytes = file.read()
-    if len(file_bytes) > 5 * 1024 * 1024:
+    # Un byte oltre il limite basta a rifiutare, senza leggere il resto.
+    file_bytes = request.files['file'].read(MAX_IMAGE_BYTES + 1)
+    if len(file_bytes) > MAX_IMAGE_BYTES:
         raise ValidationError("File troppo grande (max 5MB)")
+    image = _image_type(file_bytes)
+    if image is None:
+        raise ValidationError("Formato non supportato")
+    ext, content_type = image
 
+    u = User.query.get_or_404(user_id)
     path = f"{user_id}/{uuid.uuid4().hex}.{ext}"
-    content_type = file.content_type or f"image/{ext}"
 
     supabase = get_supabase()
     supabase.storage.from_(BUCKET).upload(
@@ -192,7 +215,6 @@ def upload_profile_image(user_id):
     )
     public_url = supabase.storage.from_(BUCKET).get_public_url(path)
 
-    u = User.query.get_or_404(user_id)
     history = _get_history(u)
 
     if u.profile_image and u.profile_image not in history:
@@ -217,6 +239,7 @@ def upload_profile_image(user_id):
 @api.route('/users/<int:user_id>/profile-image/select', methods=['PUT'])
 def select_profile_image(user_id):
     """Imposta come foto attiva una già presente nello storico."""
+    require_self(user_id)
     data = request.get_json() or {}
     url = data.get('url', '').strip()
     if not url:
@@ -241,13 +264,17 @@ def select_profile_image(user_id):
 @api.route('/users', methods=['POST'])
 def create_user():
     data = parse_body(CreateUserSchema)
+    # Un utente normale crea solo ospiti (senza email: non devono poter "diventare" un account).
+    is_guest = data['is_guest'] or not is_admin()
+    if not is_guest and not data['email']:
+        raise ValidationError("Email obbligatoria")
     user = User(
         name=data['name'],
         surname=data.get('surname') or '',
-        email=data['email'],
+        email=None if is_guest else data['email'],
         profile_image=data.get('profile_image'),
         paid_list_shown=data.get('paid_list_shown', True),
-        is_guest=data.get('is_guest', False),
+        is_guest=is_guest,
     )
     db.session.add(user)
     db.session.commit()
@@ -256,35 +283,29 @@ def create_user():
 
 @api.route('/users/<int:user_id>', methods=['PUT'])
 def update_user(user_id):
+    me = current_user()
+    require_self_or_admin(user_id)
     u = user_query().filter_by(id=user_id).first_or_404()
     data = request.get_json() or {}
 
-    if 'role_id' in data:
-        caller_email = data.get('caller_email')
-        if caller_email:
-            caller = user_query().filter_by(email=caller_email).first()
-            if not caller:
-                raise ForbiddenError("Caller non trovato")
+    if me.id != u.id and set(data) - {'role_id', 'caller_email'}:
+        raise ForbiddenError("Di un altro utente puoi cambiare solo il ruolo")
+    if 'email' in data and data['email'] != u.email:
+        raise ForbiddenError("L'email non è modificabile")
 
-            if caller.id == u.id:
-                raise ForbiddenError("Non puoi modificare il tuo stesso ruolo")
-
-            caller_role_id = caller.role_id
-            target_role_id = u.role_id
-            new_role_id = int(data['role_id'])
-
-            if caller_role_id == 2:  # admin
-                if target_role_id == 1:
-                    raise ForbiddenError("Non puoi modificare un superadmin")
-                if new_role_id == 1:
-                    raise ForbiddenError("Non puoi assegnare il ruolo superadmin")
-            elif caller_role_id != 1:
-                raise ForbiddenError("Non hai i permessi")
+    if 'role_id' in data and data['role_id'] != u.role_id:
+        require_admin()
+        if me.id == u.id:
+            raise ForbiddenError("Non puoi modificare il tuo stesso ruolo")
+        new_role = db.session.get(UserRole, data['role_id'])
+        if new_role is None:
+            raise ValidationError("Ruolo inesistente")
+        if role_name(me) != SUPERADMIN and SUPERADMIN in (role_name(u), new_role.name):
+            raise ForbiddenError("Solo un superadmin può gestire il ruolo superadmin")
 
     old_role_id = u.role_id
     if 'name' in data: u.name = data['name']
     if 'surname' in data: u.surname = data['surname']
-    if 'email' in data: u.email = data['email']
     if 'profile_image' in data: u.profile_image = data['profile_image']
     if 'paid_list_shown' in data: u.paid_list_shown = data['paid_list_shown']
     if 'theme_preference' in data: u.theme_preference = data['theme_preference']
@@ -302,13 +323,18 @@ def update_user(user_id):
     if 'role_id' in data: u.role_id = data['role_id']
     db.session.commit()
     if 'role_id' in data and data['role_id'] != old_role_id:
-        log_audit("change_role", user_id=user_id, from_role_id=old_role_id, to_role_id=data['role_id'], by=data.get('caller_email', 'unknown'))
+        log_audit("change_role", user_id=user_id, from_role_id=old_role_id, to_role_id=data['role_id'], by=me.id)
     return jsonify({"message": "Utente aggiornato"}), 200
 
 
 @api.route('/users/<int:user_id>', methods=['DELETE'])
 def delete_user(user_id):
+    require_admin()
     user = User.query.get_or_404(user_id)
+    if user.id == current_user().id:
+        raise ForbiddenError("Non puoi eliminare il tuo account da qui")
+    if role_name(user) in ADMIN_ROLES and role_name(current_user()) != SUPERADMIN:
+        raise ForbiddenError("Solo un superadmin può eliminare un amministratore")
     db.session.delete(user)
     db.session.commit()
     return jsonify({"message": "Utente eliminato"}), 200

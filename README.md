@@ -52,6 +52,8 @@ DATASOURCE_PASSWORD=...
 SUPABASE_URL=...
 SUPABASE_KEY=...
 SUPABASE_STORAGE_BUCKET=profile-images
+GITHUB_BUGREPORT_TOKEN=...      # fine-grained, solo Issues su spese-app
+# CORS_ALLOWED_ORIGINS=...      # opzionale; default: solo la webapp
 ```
 
 Avvia il server:
@@ -66,8 +68,12 @@ L'API sarà disponibile su `http://localhost:5000`.
 
 Ogni chiamata richiede l'header `Authorization: Bearer <ID token Firebase>` (progetto `spese-dc`,
 email verificata). Fanno eccezione `/api/`, `/api/keepalive` e le GET di `/api/expense-types` e
-`/api/measurement-units`. In emergenza `AUTH_REQUIRED=false` disattiva il blocco (le chiamate
-senza token valido vengono solo registrate nei log): non lasciarlo attivo.
+`/api/measurement-units`, più `POST /api/bug-reports` (limitato a 20 l'ora). Ogni utente ha un
+limite di 600 richieste al minuto. I token rifiutati sono registrati nei log con il motivo.
+
+I permessi sono in `app/access.py`: l'utente si ricava dal token; liste accessibili a proprietario
+e partecipanti (eliminazione e cambio tipo solo al proprietario); acquisti solo propri; utenti,
+ruoli e cataloghi solo admin. Alle liste condivise si entra con il link di invito.
 
 ## Endpoint principali
 

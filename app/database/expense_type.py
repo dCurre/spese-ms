@@ -1,3 +1,5 @@
+from sqlalchemy.orm import validates
+from app import validation as check
 from sqlalchemy import Column, BigInteger, String
 from app.database import db
 
@@ -8,3 +10,7 @@ class ExpenseType(db.Model):
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     name = Column(String(100), nullable=False, unique=True)
+
+    @validates('name')
+    def _name(self, key, value):
+        return check.text(value, key, 100)

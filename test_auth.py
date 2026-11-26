@@ -1,5 +1,4 @@
 """Test del controllo token: `python test_auth.py` (nessuna rete, nessun database)."""
-import os
 import time
 from types import SimpleNamespace
 
@@ -36,7 +35,6 @@ def status(value=None, method='get', path='/private'):
     return getattr(client, method)(path, headers=headers).status_code
 
 
-os.environ.pop('AUTH_REQUIRED', None)  # default: obbligatoria
 assert status(f'Bearer {token()}') == 200
 assert status() == 401
 assert status(method='post') == 401
@@ -48,7 +46,4 @@ for bad in (token(other_key), token(aud='altro'), token(iss='https://evil.exampl
     assert status(f'Bearer {bad}') == 401, bad
 assert status(path='/public') == 200
 assert status(method='options') == 200
-
-os.environ['AUTH_REQUIRED'] = 'false'
-assert status() == 200
 print('OK')

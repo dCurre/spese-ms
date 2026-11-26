@@ -1,3 +1,5 @@
+from sqlalchemy.orm import validates
+from app import validation as check
 from sqlalchemy import Column, BigInteger, String, ForeignKey
 from app.database import db
 from app.database.mixins import DeltaSyncMixin
@@ -11,3 +13,11 @@ class Product(DeltaSyncMixin, db.Model):
     name = Column(String(150), nullable=False)
     brand = Column(String(100), nullable=True)
     default_unit_id = Column(BigInteger, ForeignKey('spese.measurement_units.id'), nullable=False)
+
+    @validates('name')
+    def _name(self, key, value):
+        return check.text(value, key, 150)
+
+    @validates('brand')
+    def _brand(self, key, value):
+        return check.text(value, key, 100, required=False)

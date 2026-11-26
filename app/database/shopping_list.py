@@ -1,3 +1,5 @@
+from sqlalchemy.orm import validates
+from app import validation as check
 from sqlalchemy import Column, BigInteger, String, Boolean, TIMESTAMP, ForeignKey, Integer
 from sqlalchemy.orm import relationship
 from app.database import db
@@ -22,6 +24,18 @@ class ShoppingList(DeltaSyncMixin, db.Model):
     categories = relationship('ShoppingCategory', back_populates='shopping_list', cascade='all, delete-orphan')
     participants = relationship('ShoppingListParticipant', back_populates='shopping_list', cascade='all, delete-orphan')
 
+    @validates('name')
+    def _name(self, key, value):
+        return check.text(value, key, 255)
+
+    @validates('completed', 'starred')
+    def _flags(self, key, value):
+        return check.boolean(value, key)
+
+    @validates('list_type')
+    def _list_type(self, key, value):
+        return check.one_of(value, key, ('personal', 'shared'))
+
 
 class ShoppingCategory(DeltaSyncMixin, db.Model):
     __tablename__ = 'shopping_categories'
@@ -39,6 +53,14 @@ class ShoppingCategory(DeltaSyncMixin, db.Model):
     children = relationship('ShoppingCategory', back_populates='parent', cascade='all, delete-orphan')
     parent = relationship('ShoppingCategory', back_populates='children', remote_side='ShoppingCategory.id')
 
+    @validates('name')
+    def _name(self, key, value):
+        return check.text(value, key, 255)
+
+    @validates('sort_order')
+    def _sort_order(self, key, value):
+        return check.integer(value, key, -1_000_000, 1_000_000)
+
 
 class ShoppingItem(DeltaSyncMixin, db.Model):
     __tablename__ = 'shopping_items'
@@ -55,6 +77,22 @@ class ShoppingItem(DeltaSyncMixin, db.Model):
 
     shopping_list = relationship('ShoppingList', back_populates='items')
     category = relationship('ShoppingCategory', back_populates='items')
+
+    @validates('name')
+    def _name(self, key, value):
+        return check.text(value, key, 255)
+
+    @validates('quantity')
+    def _quantity(self, key, value):
+        return check.integer(value, key, 1, 100_000)
+
+    @validates('checked')
+    def _checked(self, key, value):
+        return check.boolean(value, key)
+
+    @validates('sort_order')
+    def _sort_order(self, key, value):
+        return check.integer(value, key, -1_000_000, 1_000_000)
 
 
 class ShoppingListParticipant(db.Model):

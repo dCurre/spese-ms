@@ -1,4 +1,5 @@
 import re
+import secrets
 from datetime import datetime, timezone
 from flask import request, jsonify
 from sqlalchemy.orm import joinedload
@@ -11,6 +12,10 @@ from app.database.expenses_list_participant import ExpensesListParticipant
 from app.exceptions import ValidationError, ForbiddenError
 from app.schemas import parse_body, CreateExpensesListSchema
 from app.audit import log_audit
+from app.access import (
+    current_user, expense_list_ids, can_access_expense_list, require_expense_list,
+    is_expense_list_member, require_self,
+)
 
 # Tipi di lista ammessi (colonna stringa, come shopping_lists).
 LIST_TYPES = ('personal', 'shared')
@@ -43,10 +48,20 @@ def _soft_delete_expenses_list(el):
         .update({'deleted': True}, synchronize_session=False)
 
 
+def _delete_or_leave(el):
+    """Il proprietario elimina la lista; un partecipante la abbandona."""
+    me = current_user().id
+    if el.user_id == me:
+        _soft_delete_expenses_list(el)
+    else:
+        ExpensesListParticipant.query.filter_by(expenses_list_id=el.id, user_id=me) \
+            .delete(synchronize_session=False)
+
+
 @api.route('/expenses-lists', methods=['GET'])
 def get_expenses_lists():
     show_paid = request.args.get('paid', default=None, type=lambda v: v.lower() == 'true')
-    query = ExpensesList.query.filter_by(deleted=False)
+    query = ExpensesList.query.filter_by(deleted=False).filter(ExpensesList.id.in_(expense_list_ids()))
     if show_paid is not None:
         query = query.filter_by(paid=show_paid)
     expenses_lists = query.order_by(ExpensesList.id).all()
@@ -71,6 +86,7 @@ def get_expenses_lists():
 @api.route('/expenses-lists/<int:list_id>', methods=['GET'])
 def get_expenses_list(list_id):
     el = ExpensesList.query.filter_by(id=list_id, deleted=False).first_or_404()
+    require_expense_list(el.id)
     return jsonify({
         "id": el.id,
         "client_id": el.client_id,
@@ -102,6 +118,7 @@ def create_expenses_list():
     # list_type è garantito presente e valido dallo schema (required + OneOf).
     list_type = data['list_type']
     client_id = data.get('client_id')
+    require_self(data['user_id'])
 
     # Create idempotente: client_id gia' visto per lo stesso user -> update.
     existing = None
@@ -130,6 +147,7 @@ def create_expenses_list():
 @api.route('/expenses-lists/<int:list_id>', methods=['PUT'])
 def update_expenses_list(list_id):
     el = ExpensesList.query.get_or_404(list_id)
+    require_expense_list(el.id)
     data = request.get_json() or {}
     if 'name' in data: el.name = data['name']
     if 'paid' in data: el.paid = data['paid']
@@ -140,10 +158,7 @@ def update_expenses_list(list_id):
             raise ValidationError(f"Tipo lista non valido: {type_name}")
 
         # Solo il proprietario della lista può cambiarne il tipo.
-        requester_id = data.get('requester_id')
-        if not requester_id:
-            raise ValidationError("requester_id mancante")
-        if el.user_id != requester_id:
+        if el.user_id != current_user().id:
             raise ForbiddenError("Non sei il proprietario della lista")
 
         el.list_type = type_name
@@ -153,6 +168,7 @@ def update_expenses_list(list_id):
         # partecipante (ha un record in expenses_list_participants): va mantenuto,
         # cosi' una lista personale resta con 1 partecipante (il proprietario).
         if type_name == 'personal':
+            el.invite_token = None
             Expense.query.filter_by(expense_list_id=el.id, deleted=False).update(
                 {Expense.expense_owner_user_id: el.user_id},
                 synchronize_session=False,
@@ -170,8 +186,8 @@ def update_expenses_list(list_id):
 def transfer_owner(list_id):
     data = request.get_json() or {}
     new_owner_id = data.get('new_owner_id')
-    current_owner_id = data.get('current_owner_id')
-    if not new_owner_id or not current_owner_id:
+    current_owner_id = current_user().id
+    if not new_owner_id:
         raise ValidationError("Parametri mancanti")
 
     # SELECT FOR UPDATE: serializza trasferimenti concorrenti sulla stessa lista
@@ -206,6 +222,7 @@ def transfer_owner(list_id):
 
 @api.route('/expenses-lists/<int:list_id>/balance', methods=['GET'])
 def get_expenses_list_balance(list_id):
+    require_expense_list(list_id)
     expenses = (
         Expense.query
         .options(joinedload(Expense.user))
@@ -236,7 +253,8 @@ def get_expenses_list_balance(list_id):
 def delete_expenses_list(list_id):
     # Soft-delete: marca deleted=true la lista e propaga alle sue spese.
     expenses_list = ExpensesList.query.filter_by(id=list_id, deleted=False).first_or_404()
-    _soft_delete_expenses_list(expenses_list)
+    require_expense_list(expenses_list.id)
+    _delete_or_leave(expenses_list)
     db.session.commit()
     return jsonify({"message": "Lista eliminata"}), 200
 
@@ -249,9 +267,10 @@ def bulk_delete_expenses_lists():
         raise ValidationError("ids mancante o vuoto")
     # Soft-delete: marca deleted=true su liste + relative spese. Partecipanti e
     # inviti restano gestiti dagli endpoint online (fuori dal delta).
-    lists = ExpensesList.query.filter(ExpensesList.id.in_(ids), ExpensesList.deleted == False).all()
+    lists = ExpensesList.query.filter(ExpensesList.id.in_(ids), ExpensesList.deleted == False,
+                                      ExpensesList.id.in_(expense_list_ids())).all()
     for el in lists:
-        _soft_delete_expenses_list(el)
+        _delete_or_leave(el)
     db.session.commit()
     deleted = len(lists)
     return jsonify({"deleted": deleted, "message": f"{deleted} liste eliminate"}), 200
@@ -300,6 +319,7 @@ def expenses_lists_delta():
     user_id = request.args.get('user_id', type=int)
     if not user_id:
         raise ValidationError("user_id mancante")
+    require_self(user_id)
     since = _parse_since(request.args.get('since'))
 
     server_time = db.session.query(func.now()).scalar()
@@ -346,15 +366,18 @@ def expenses_batch_sync():
     data = request.get_json() or {}
     list_map = {}
     expense_map = {}
+    # Le righe non accessibili vengono ignorate, non rifiutate: un 403 bloccherebbe per sempre
+    # il sync di chi ha modifiche in coda su una lista da cui è stato rimosso.
+    me = current_user().id
 
     # --- DELETE (soft) ---
     for lid in (data.get('lists_delete') or []):
         el = ExpensesList.query.filter_by(id=lid, deleted=False).first()
-        if el:
-            _soft_delete_expenses_list(el)
+        if el and can_access_expense_list(el.id):
+            _delete_or_leave(el)
     for eid in (data.get('expenses_delete') or []):
         e = Expense.query.get(eid)
-        if e and not e.deleted:
+        if e and not e.deleted and can_access_expense_list(e.expense_list_id):
             e.deleted = True
     db.session.flush()
 
@@ -370,7 +393,7 @@ def expenses_batch_sync():
         cid = nl.get('client_id')
         el = None
         if cid:
-            el = ExpensesList.query.filter_by(user_id=nl['user_id'], client_id=cid).first()
+            el = ExpensesList.query.filter_by(user_id=me, client_id=cid).first()
         if el:
             el.name = nl['name']
             el.paid = nl.get('paid', False)
@@ -379,7 +402,7 @@ def expenses_batch_sync():
         else:
             el = ExpensesList(
                 name=nl['name'],
-                user_id=nl['user_id'],
+                user_id=me,
                 paid=nl.get('paid', False),
                 list_type=list_type,
                 client_id=cid,
@@ -398,6 +421,8 @@ def expenses_batch_sync():
     # --- CREATE spese (idempotenti via client_id per lista) ---
     for ne in (data.get('expenses_create') or []):
         list_id = _resolve_list_id(ne)
+        if not can_access_expense_list(list_id):
+            continue
         cid = ne.get('client_id')
         e = None
         if cid and list_id is not None:
@@ -408,11 +433,13 @@ def expenses_batch_sync():
                 e.amount = ne['amount']
             if ne.get('expense_date') is not None:
                 e.expense_date = parse_date(ne['expense_date'])
-            if ne.get('expense_owner_user_id') is not None:
+            if is_expense_list_member(list_id, ne.get('expense_owner_user_id')):
                 e.expense_owner_user_id = ne['expense_owner_user_id']
             e.expense_type_id = ne.get('expense_type_id')
-            e.modified_by = ne.get('modified_by')
+            e.modified_by = me if ne.get('modified_by') else None
             e.deleted = False
+        elif not is_expense_list_member(list_id, ne.get('expense_owner_user_id')):
+            continue
         else:
             e = Expense(
                 name=ne.get('name'),
@@ -421,7 +448,7 @@ def expenses_batch_sync():
                 expense_list_id=list_id,
                 expense_date=parse_date(ne['expense_date']),
                 expense_type_id=ne.get('expense_type_id'),
-                modified_by=ne.get('modified_by'),
+                modified_by=me if ne.get('modified_by') else None,
                 client_id=cid,
             )
             db.session.add(e)
@@ -432,7 +459,7 @@ def expenses_batch_sync():
     # --- UPDATE liste ---
     for ul in (data.get('lists_update') or []):
         el = ExpensesList.query.filter_by(id=ul['id'], deleted=False).first()
-        if not el:
+        if not el or not can_access_expense_list(el.id):
             continue
         if 'name' in ul:
             el.name = ul['name']
@@ -442,7 +469,7 @@ def expenses_batch_sync():
     # --- UPDATE spese ---
     for ue in (data.get('expenses_update') or []):
         e = Expense.query.filter_by(id=ue['id'], deleted=False).first()
-        if not e:
+        if not e or not can_access_expense_list(e.expense_list_id):
             continue
         if 'name' in ue:
             e.name = ue['name']
@@ -450,12 +477,12 @@ def expenses_batch_sync():
             e.amount = ue['amount']
         if 'expense_date' in ue:
             e.expense_date = parse_date(ue['expense_date'])
-        if 'expense_owner_user_id' in ue:
+        if is_expense_list_member(e.expense_list_id, ue.get('expense_owner_user_id')):
             e.expense_owner_user_id = ue['expense_owner_user_id']
         if 'expense_type_id' in ue:
             e.expense_type_id = ue['expense_type_id']
         if 'modified_by' in ue:
-            e.modified_by = ue['modified_by']
+            e.modified_by = me
 
     db.session.commit()
     server_time = db.session.query(func.now()).scalar()
@@ -463,3 +490,56 @@ def expenses_batch_sync():
         "server_time": server_time,
         "id_map": {"lists": list_map, "expenses": expense_map},
     }), 200
+
+
+# --- Inviti -------------------------------------------------------------------
+
+@api.route('/expenses-lists/<int:list_id>/invite-token', methods=['POST'])
+def generate_expenses_list_invite(list_id):
+    el = ExpensesList.query.filter_by(id=list_id, deleted=False).first_or_404()
+    require_expense_list(el.id)
+    if el.list_type != 'shared':
+        raise ValidationError("Solo le liste condivise possono avere un link di invito")
+    if not el.invite_token:
+        el.invite_token = secrets.token_urlsafe(32)
+        db.session.commit()
+    return jsonify({"invite_token": el.invite_token}), 200
+
+
+@api.route('/expenses-lists/<int:list_id>/invite-token', methods=['DELETE'])
+def revoke_expenses_list_invite(list_id):
+    el = ExpensesList.query.filter_by(id=list_id, deleted=False).first_or_404()
+    if el.user_id != current_user().id:
+        raise ForbiddenError("Non sei il proprietario della lista")
+    el.invite_token = None
+    db.session.commit()
+    return jsonify({"message": "Link revocato"}), 200
+
+
+def _list_by_invite(token):
+    return ExpensesList.query.filter_by(invite_token=token, deleted=False, list_type='shared').first_or_404()
+
+
+@api.route('/expenses-lists/invite/<string:token>', methods=['GET'])
+def preview_expenses_list_invite(token):
+    """Anteprima per chi ha il link: solo nome e numero di partecipanti."""
+    el = _list_by_invite(token)
+    return jsonify({
+        "id": el.id,
+        "name": el.name,
+        "participants_count": len(el.participants),
+        "is_member": is_expense_list_member(el.id, current_user().id),
+    })
+
+
+@api.route('/expenses-lists/join/<string:token>', methods=['POST'])
+def join_expenses_list(token):
+    el = _list_by_invite(token)
+    me = current_user().id
+    if not is_expense_list_member(el.id, me):
+        db.session.add(ExpensesListParticipant(
+            expenses_list_id=el.id, user_id=me, joined_at=datetime.now(timezone.utc),
+        ))
+        db.session.commit()
+        log_audit("join_by_invite", list_id=el.id, user_id=me)
+    return jsonify({"id": el.id, "message": "Aggiunto alla lista"}), 200

@@ -1,3 +1,5 @@
+from sqlalchemy.orm import validates
+from app import validation as check
 from sqlalchemy import Column, BigInteger, String, Boolean, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from app.database import db
@@ -21,3 +23,15 @@ class User(db.Model):
     app_theme_preference = Column(String(20), nullable=True, default='default')
     app_language_preference = Column(String(5), nullable=True, default='it')
     is_guest = Column(Boolean, nullable=False, default=False)
+
+    @validates('name', 'surname')
+    def _names(self, key, value):
+        return check.text(value, key, 255, required=False)
+
+    @validates('profile_image')
+    def _profile_image(self, key, value):
+        return check.https_url(value, key)
+
+    @validates('theme_preference', 'app_theme_preference')
+    def _theme(self, key, value):
+        return check.text(value, key, 20, required=False)

@@ -1,3 +1,5 @@
+from sqlalchemy.orm import validates
+from app import validation as check
 from sqlalchemy import Column, Integer, BigInteger, String, Numeric, DateTime, ForeignKey, ForeignKeyConstraint, TIMESTAMP
 from sqlalchemy.orm import relationship
 
@@ -27,3 +29,16 @@ class Expense(DeltaSyncMixin, db.Model):
     user = relationship('User', backref=db.backref('expenses', cascade='all, delete-orphan'), foreign_keys='Expense.expense_owner_user_id')
     expenses_list = relationship('ExpensesList', backref=db.backref('expenses', cascade='all, delete-orphan'), foreign_keys='Expense.expense_list_id')
     expense_type = relationship('ExpenseType', foreign_keys=[expense_type_id])
+
+    @validates('name')
+    def _name(self, key, value):
+        return check.text(value, key, 255)
+
+    @validates('amount')
+    def _amount(self, key, value):
+        return check.number(value, key, 0, check.MAX_AMOUNT, 2)
+
+    @validates('expense_date')
+    def _date(self, key, value):
+        check.day(value.date() if hasattr(value, 'date') else value, key)
+        return value

@@ -27,3 +27,14 @@ class NotFoundError(AppError):
 
 class ConflictError(AppError):
     status_code = 409
+
+
+class TooManyRequestsError(AppError):
+    status_code = 429
+
+    def __init__(self, message="Troppe richieste: riprova tra poco"):
+        super().__init__(message)
+
+
+class UpstreamError(AppError):
+    status_code = 502

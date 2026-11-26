@@ -6,7 +6,9 @@ from app.database.purchase import Purchase
 from app.database.product import Product
 from app.database.measurement_unit import MeasurementUnit
 from app.exceptions import ValidationError
+from app.validation import day
 from app.schemas import parse_body, CreatePurchaseSchema
+from app.access import current_user, require_self
 
 
 @api.route('/products/<int:product_id>/purchases', methods=['GET'])
@@ -14,7 +16,7 @@ def get_product_purchases(product_id):
     Product.query.filter_by(id=product_id, deleted=False).first_or_404()
     purchases = (
         Purchase.query
-        .filter_by(product_id=product_id, deleted=False)
+        .filter_by(product_id=product_id, deleted=False, user_id=current_user().id)
         .order_by(Purchase.purchased_at.desc())
         .all()
     )
@@ -28,11 +30,13 @@ def create_purchase():
     data = parse_body(CreatePurchaseSchema)
     Product.query.get_or_404(data['product_id'])
     client_id = data.get('client_id')
+    require_self(data['user_id'])
 
     # Create idempotente: client_id gia' visto per lo stesso prodotto -> update.
     existing = None
     if client_id:
-        existing = Purchase.query.filter_by(product_id=data['product_id'], client_id=client_id).first()
+        existing = Purchase.query.filter_by(product_id=data['product_id'], client_id=client_id,
+                                            user_id=data['user_id']).first()
     if existing:
         existing.user_id = data['user_id']
         existing.purchased_at = data['purchased_at']
@@ -63,7 +67,8 @@ def create_purchase():
 
 @api.route('/purchases/<int:purchase_id>', methods=['PUT'])
 def update_purchase(purchase_id):
-    purchase = Purchase.query.filter_by(id=purchase_id, deleted=False).first_or_404()
+    purchase = Purchase.query.filter_by(id=purchase_id, deleted=False,
+                                        user_id=current_user().id).first_or_404()
     data = request.get_json() or {}
     if 'purchased_at' in data:
         purchase.purchased_at = data['purchased_at']
@@ -84,7 +89,8 @@ def update_purchase(purchase_id):
 @api.route('/purchases/<int:purchase_id>', methods=['DELETE'])
 def delete_purchase(purchase_id):
     # Soft-delete (updated_at aggiornato dal trigger DB).
-    purchase = Purchase.query.filter_by(id=purchase_id, deleted=False).first_or_404()
+    purchase = Purchase.query.filter_by(id=purchase_id, deleted=False,
+                                        user_id=current_user().id).first_or_404()
     purchase.deleted = True
     db.session.commit()
     return jsonify({"message": "Acquisto eliminato"}), 200
@@ -97,7 +103,8 @@ def bulk_delete_purchases():
     if not ids:
         raise ValidationError("ids mancante o vuoto")
     # Soft-delete di piu' acquisti (nessuna rimozione fisica).
-    deleted = Purchase.query.filter(Purchase.id.in_(ids), Purchase.deleted == False) \
+    deleted = Purchase.query.filter(Purchase.id.in_(ids), Purchase.deleted == False,
+                                    Purchase.user_id == current_user().id) \
         .update({'deleted': True}, synchronize_session=False)
     db.session.commit()
     return jsonify({"deleted": deleted, "message": f"{deleted} acquisti eliminati"}), 200
@@ -110,11 +117,11 @@ def get_price_history(product_id):
     from_date = request.args.get('from')
     to_date = request.args.get('to')
 
-    query = Purchase.query.filter_by(product_id=product_id, deleted=False)
+    query = Purchase.query.filter_by(product_id=product_id, deleted=False, user_id=current_user().id)
     if from_date:
-        query = query.filter(Purchase.purchased_at >= from_date)
+        query = query.filter(Purchase.purchased_at >= day(from_date, 'from'))
     if to_date:
-        query = query.filter(Purchase.purchased_at <= to_date)
+        query = query.filter(Purchase.purchased_at <= day(to_date, 'to'))
 
     purchases = query.order_by(Purchase.purchased_at).all()
 

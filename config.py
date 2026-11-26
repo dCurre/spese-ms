@@ -18,6 +18,8 @@ class Config:
         f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    # Upload immagini da 5 MB più l'involucro multipart; basta anche per il batch-sync.
+    MAX_CONTENT_LENGTH = 6 * 1024 * 1024
     # Serverless-friendly pool settings
     SQLALCHEMY_ENGINE_OPTIONS = {
         "pool_pre_ping": True,

@@ -1,13 +1,11 @@
 from flask import request, jsonify
 from app.api import api
+from app.access import require_admin
 from app.database import db
 from app.database.user_role import UserRole
 from app.exceptions import ForbiddenError
 
-PROTECTED_IDS = {1, 2, 3}  # superadmin, admin, user non modificabili
-
-# Gerarchia: valore più basso = ruolo più alto
-ROLE_HIERARCHY = {1: 0, 2: 1, 3: 2}  # superadmin > admin > user
+PROTECTED_IDS = {1, 2, 3}  # ruoli di base, non modificabili
 
 
 @api.route('/user-roles', methods=['GET'])
@@ -21,6 +19,7 @@ def get_user_roles():
 
 @api.route('/user-roles', methods=['POST'])
 def create_user_role():
+    require_admin()
     data = request.get_json() or {}
     role = UserRole(name=data['name'])
     db.session.add(role)
@@ -30,6 +29,7 @@ def create_user_role():
 
 @api.route('/user-roles/<int:role_id>', methods=['PUT'])
 def update_user_role(role_id):
+    require_admin()
     if role_id in PROTECTED_IDS:
         raise ForbiddenError("Ruolo non modificabile")
     role = UserRole.query.get_or_404(role_id)
@@ -42,6 +42,7 @@ def update_user_role(role_id):
 
 @api.route('/user-roles/<int:role_id>', methods=['DELETE'])
 def delete_user_role(role_id):
+    require_admin()
     if role_id in PROTECTED_IDS:
         raise ForbiddenError("Ruolo non eliminabile")
     role = UserRole.query.get_or_404(role_id)

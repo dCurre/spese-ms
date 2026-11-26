@@ -12,6 +12,11 @@ from app.api.shopping_categories.routes import soft_delete_category
 from app.exceptions import ValidationError, ForbiddenError
 from app.schemas import parse_body, CreateShoppingListSchema
 from app.audit import log_audit
+from app.database.user import User
+from app.access import (
+    current_user, shopping_list_ids, can_access_shopping_list, require_shopping_list,
+    category_in_list, require_category_in_list, require_self,
+)
 
 
 def _soft_delete_list(sl):
@@ -172,8 +177,19 @@ def _serialize_list(sl, include_items=False, items_count=None, checked_count=Non
     return data
 
 
+def _delete_or_leave(sl):
+    """Il proprietario elimina la checklist; un partecipante la abbandona."""
+    me = current_user().id
+    if sl.owner_id == me:
+        _soft_delete_list(sl)
+    else:
+        ShoppingListParticipant.query.filter_by(shopping_list_id=sl.id, user_id=me) \
+            .delete(synchronize_session=False)
+
+
 @api.route('/shopping-lists/by-user/<int:user_id>', methods=['GET'])
 def get_shopping_lists_by_user(user_id):
+    require_self(user_id)
     owned = ShoppingList.query.options(
         joinedload(ShoppingList.owner),
     ).filter_by(owner_id=user_id, deleted=False).all()
@@ -281,6 +297,7 @@ def shopping_lists_delta():
     user_id = request.args.get('user_id', type=int)
     if not user_id:
         raise ValidationError("user_id mancante")
+    require_self(user_id)
     since = _parse_since(request.args.get('since'))
 
     # server_time PRIMA di leggere i dati: una riga modificata durante la query
@@ -320,6 +337,7 @@ def shopping_lists_delta():
 
 @api.route('/shopping-lists/<int:list_id>', methods=['GET'])
 def get_shopping_list(list_id):
+    require_shopping_list(list_id)
     sl = ShoppingList.query.options(
         joinedload(ShoppingList.owner),
         joinedload(ShoppingList.participants).joinedload(ShoppingListParticipant.user)
@@ -331,6 +349,7 @@ def get_shopping_list(list_id):
 def create_shopping_list():
     data = parse_body(CreateShoppingListSchema)
     client_id = data.get('client_id')
+    require_self(data['owner_id'])
 
     # Create idempotente: client_id gia' visto per lo stesso owner -> update.
     existing = None
@@ -362,21 +381,22 @@ def create_shopping_list():
 @api.route('/shopping-lists/<int:list_id>', methods=['PUT'])
 def update_shopping_list(list_id):
     sl = ShoppingList.query.get_or_404(list_id)
+    require_shopping_list(sl.id)
     data = request.get_json() or {}
     if 'name' in data: sl.name = data['name']
     if 'completed' in data: sl.completed = data['completed']
     if 'list_type' in data:
         # Solo il proprietario della lista può cambiarne il tipo.
-        requester_id = data.get('requester_id')
-        if not requester_id:
-            raise ValidationError("requester_id mancante")
-        if sl.owner_id != requester_id:
+        if sl.owner_id != current_user().id:
             raise ForbiddenError("Non sei il proprietario della lista")
+        if data['list_type'] not in ('personal', 'shared'):
+            raise ValidationError("Tipo lista non valido")
 
         sl.list_type = data['list_type']
         # Diventa personale: rimuovi i partecipanti (una lista personale non ne ha).
         # Le checklist non hanno "owner delle spese", quindi non serve riassegnare nulla.
         if data['list_type'] == 'personal':
+            sl.invite_token = None
             ShoppingListParticipant.query.filter_by(shopping_list_id=sl.id).delete(
                 synchronize_session=False,
             )
@@ -390,7 +410,8 @@ def delete_shopping_list(list_id):
     # Soft-delete: marca deleted=true (lista + categorie + articoli) cosi' il
     # delta sync propaga la cancellazione all'app. Nessuna rimozione fisica.
     sl = ShoppingList.query.filter_by(id=list_id, deleted=False).first_or_404()
-    _soft_delete_list(sl)
+    require_shopping_list(sl.id)
+    _delete_or_leave(sl)
     db.session.commit()
     return jsonify({"message": "Checklist eliminata"}), 200
 
@@ -404,9 +425,10 @@ def bulk_delete_shopping_lists():
     # Soft-delete di piu' liste: marca deleted=true su liste + categorie +
     # articoli. Nessuna rimozione fisica (il delta pull le restituira' per far
     # rimuovere i dati localmente all'app).
-    lists = ShoppingList.query.filter(ShoppingList.id.in_(ids), ShoppingList.deleted == False).all()
+    lists = ShoppingList.query.filter(ShoppingList.id.in_(ids), ShoppingList.deleted == False,
+                                      ShoppingList.id.in_(shopping_list_ids())).all()
     for sl in lists:
-        _soft_delete_list(sl)
+        _delete_or_leave(sl)
     db.session.commit()
     deleted = len(lists)
     return jsonify({"deleted": deleted, "message": f"{deleted} checklist eliminate"}), 200
@@ -415,6 +437,7 @@ def bulk_delete_shopping_lists():
 @api.route('/shopping-lists/<int:list_id>/invite-token', methods=['POST'])
 def generate_invite_token(list_id):
     sl = ShoppingList.query.get_or_404(list_id)
+    require_shopping_list(sl.id)
     if not sl.invite_token:
         sl.invite_token = secrets.token_urlsafe(32)
         db.session.commit()
@@ -424,6 +447,8 @@ def generate_invite_token(list_id):
 @api.route('/shopping-lists/<int:list_id>/invite-token', methods=['DELETE'])
 def revoke_invite_token(list_id):
     sl = ShoppingList.query.get_or_404(list_id)
+    if sl.owner_id != current_user().id:
+        raise ForbiddenError("Non sei il proprietario della lista")
     sl.invite_token = None
     db.session.commit()
     return jsonify({"message": "Link revocato"}), 200
@@ -432,10 +457,7 @@ def revoke_invite_token(list_id):
 @api.route('/shopping-lists/join/<string:token>', methods=['POST'])
 def join_by_token(token):
     sl = ShoppingList.query.filter_by(invite_token=token, deleted=False).first_or_404()
-    data = request.get_json() or {}
-    user_id = data.get('user_id')
-    if not user_id:
-        raise ValidationError("user_id mancante")
+    user_id = current_user().id
 
     if sl.owner_id == user_id:
         return jsonify({"id": sl.id, "message": "Sei il proprietario"}), 200
@@ -457,9 +479,9 @@ def transfer_ownership(list_id):
     sl = ShoppingList.query.filter_by(id=list_id).with_for_update().first_or_404()
     data = request.get_json() or {}
     new_owner_id = data.get('new_owner_id')
-    old_owner_id = data.get('old_owner_id')
-    if not new_owner_id or not old_owner_id:
-        raise ValidationError("new_owner_id e old_owner_id obbligatori")
+    old_owner_id = current_user().id
+    if not new_owner_id:
+        raise ValidationError("new_owner_id obbligatorio")
     if sl.owner_id != old_owner_id:
         raise ForbiddenError("Non sei il proprietario")
 
@@ -487,6 +509,12 @@ def add_shopping_list_participant(list_id):
     user_id = data.get('user_id')
     if not user_id:
         raise ValidationError("user_id mancante")
+    sl = ShoppingList.query.filter_by(id=list_id, deleted=False).first_or_404()
+    if sl.owner_id != current_user().id:
+        raise ForbiddenError("Per aggiungere una persona condividi il link di invito")
+    target = db.session.get(User, user_id)
+    if target is None or target.is_guest:
+        raise ValidationError("Utente inesistente")
     existing = ShoppingListParticipant.query.filter_by(
         shopping_list_id=list_id, user_id=user_id
     ).first()
@@ -512,18 +540,20 @@ def batch_save_list(list_id):
       category_temp_id usato se l'item appartiene a una categoria nuova (creata nello stesso batch)
     """
     ShoppingList.query.filter_by(id=list_id, deleted=False).first_or_404()
+    require_shopping_list(list_id)
     data = request.get_json() or {}
 
     temp_id_map = {}
 
     # Soft-delete delle categorie (propaga ad articoli e sottocategorie).
     for cat_id in (data.get('categories_delete') or []):
+        require_category_in_list(cat_id, list_id)
         soft_delete_category(cat_id)
     db.session.flush()
 
     for upd in (data.get('categories_update') or []):
         cat = ShoppingCategory.query.get(upd['id'])
-        if cat and upd.get('name', '').strip():
+        if cat and cat.shopping_list_id == list_id and upd.get('name', '').strip():
             cat.name = upd['name'].strip()
 
     new_cats = data.get('categories_create') or []
@@ -557,6 +587,7 @@ def batch_save_list(list_id):
                 next_remaining.append(nc)
                 continue
             pid = _resolve_pid(nc.get('parent_id'))
+            require_category_in_list(pid, list_id)
             # Create idempotente via client_id nella stessa lista.
             nc_client_id = nc.get('client_id')
             cat = None
@@ -586,12 +617,12 @@ def batch_save_list(list_id):
     # Soft-delete degli articoli.
     for item_id in (data.get('items_delete') or []):
         item = ShoppingItem.query.get(item_id)
-        if item and not item.deleted:
+        if item and item.shopping_list_id == list_id and not item.deleted:
             item.deleted = True
 
     for upd in (data.get('items_update') or []):
         item = ShoppingItem.query.get(upd['id'])
-        if not item:
+        if not item or item.shopping_list_id != list_id:
             continue
         if 'name' in upd and upd['name'].strip():
             item.name = upd['name'].strip()
@@ -600,6 +631,7 @@ def batch_save_list(list_id):
         if 'checked' in upd:
             item.checked = upd['checked']
         if 'category_id' in upd:
+            require_category_in_list(upd['category_id'], list_id)
             item.category_id = upd['category_id']
 
     for ni in (data.get('items_create') or []):
@@ -609,6 +641,7 @@ def batch_save_list(list_id):
             cat_id = temp_id_map.get(str(temp), cat_id)
         if not ni.get('name', '').strip():
             continue
+        require_category_in_list(cat_id, list_id)
         # Create idempotente via client_id nella stessa lista.
         ni_client_id = ni.get('client_id')
         item = None
@@ -670,6 +703,9 @@ def batch_sync():
     risolti iterativamente, poi articoli) → update.
     """
     data = request.get_json() or {}
+    # Le righe non accessibili vengono ignorate, non rifiutate: un 403 bloccherebbe per sempre
+    # il sync di chi ha modifiche in coda su una lista da cui è stato rimosso.
+    me = current_user().id
     list_map = {}   # temp_id(str) -> id reale
     cat_map = {}
     item_map = {}
@@ -678,13 +714,15 @@ def batch_sync():
     del_list_ids = data.get('lists_delete') or []
     for lid in del_list_ids:
         sl = ShoppingList.query.filter_by(id=lid, deleted=False).first()
-        if sl:
-            _soft_delete_list(sl)
+        if sl and can_access_shopping_list(sl.id):
+            _delete_or_leave(sl)
     for cid in (data.get('categories_delete') or []):
-        soft_delete_category(cid)
+        cat = db.session.get(ShoppingCategory, cid)
+        if cat and can_access_shopping_list(cat.shopping_list_id):
+            soft_delete_category(cid)
     for iid in (data.get('items_delete') or []):
         item = ShoppingItem.query.get(iid)
-        if item and not item.deleted:
+        if item and not item.deleted and can_access_shopping_list(item.shopping_list_id):
             item.deleted = True
     db.session.flush()
 
@@ -695,7 +733,7 @@ def batch_sync():
         cid = nl.get('client_id')
         sl = None
         if cid:
-            sl = ShoppingList.query.filter_by(owner_id=nl['owner_id'], client_id=cid).first()
+            sl = ShoppingList.query.filter_by(owner_id=me, client_id=cid).first()
         if sl:
             sl.name = nl['name'].strip()
             sl.list_type = nl.get('list_type', 'personal')
@@ -705,7 +743,7 @@ def batch_sync():
         else:
             sl = ShoppingList(
                 name=nl['name'].strip(),
-                owner_id=nl['owner_id'],
+                owner_id=me,
                 list_type=nl.get('list_type', 'personal'),
                 completed=nl.get('completed', False),
                 starred=nl.get('starred', False),
@@ -752,19 +790,24 @@ def batch_sync():
             if not (nc.get('name') or '').strip():
                 continue
             nc_list_id = _resolve_list_id(nc)
+            if not can_access_shopping_list(nc_list_id):
+                continue
+            parent_id = _resolve_cat_parent(nc)
+            if not category_in_list(parent_id, nc_list_id):
+                parent_id = None
             cid = nc.get('client_id')
             cat = None
             if cid and nc_list_id is not None:
                 cat = ShoppingCategory.query.filter_by(shopping_list_id=nc_list_id, client_id=cid).first()
             if cat:
-                cat.parent_id = _resolve_cat_parent(nc)
+                cat.parent_id = parent_id
                 cat.name = nc['name'].strip()
                 cat.sort_order = nc.get('sort_order', 0)
                 cat.deleted = False
             else:
                 cat = ShoppingCategory(
                     shopping_list_id=nc_list_id,
-                    parent_id=_resolve_cat_parent(nc),
+                    parent_id=parent_id,
                     name=nc['name'].strip(),
                     sort_order=nc.get('sort_order', 0),
                     client_id=cid,
@@ -784,6 +827,10 @@ def batch_sync():
         if ct is not None:
             cat_id = cat_map.get(str(ct), cat_id)
         ni_list_id = _resolve_list_id(ni)
+        if not can_access_shopping_list(ni_list_id):
+            continue
+        if not category_in_list(cat_id, ni_list_id):
+            cat_id = None
         cid = ni.get('client_id')
         item = None
         if cid and ni_list_id is not None:
@@ -813,7 +860,7 @@ def batch_sync():
     # --- UPDATE liste ---
     for ul in (data.get('lists_update') or []):
         sl = ShoppingList.query.filter_by(id=ul['id'], deleted=False).first()
-        if not sl:
+        if not sl or not can_access_shopping_list(sl.id):
             continue
         if 'name' in ul and (ul['name'] or '').strip():
             sl.name = ul['name'].strip()
@@ -825,19 +872,19 @@ def batch_sync():
     # --- UPDATE categorie ---
     for uc in (data.get('categories_update') or []):
         cat = ShoppingCategory.query.filter_by(id=uc['id'], deleted=False).first()
-        if not cat:
+        if not cat or not can_access_shopping_list(cat.shopping_list_id):
             continue
         if 'name' in uc and (uc['name'] or '').strip():
             cat.name = uc['name'].strip()
         if 'sort_order' in uc:
             cat.sort_order = uc['sort_order']
-        if 'parent_id' in uc:
+        if 'parent_id' in uc and category_in_list(uc['parent_id'], cat.shopping_list_id):
             cat.parent_id = uc['parent_id']
 
     # --- UPDATE articoli ---
     for ui in (data.get('items_update') or []):
         item = ShoppingItem.query.filter_by(id=ui['id'], deleted=False).first()
-        if not item:
+        if not item or not can_access_shopping_list(item.shopping_list_id):
             continue
         if 'name' in ui and (ui['name'] or '').strip():
             item.name = ui['name'].strip()
@@ -847,7 +894,7 @@ def batch_sync():
             item.checked = ui['checked']
         if 'sort_order' in ui:
             item.sort_order = ui['sort_order']
-        if 'category_id' in ui:
+        if 'category_id' in ui and category_in_list(ui['category_id'], item.shopping_list_id):
             item.category_id = ui['category_id']
 
     db.session.commit()
@@ -860,6 +907,10 @@ def batch_sync():
 
 @api.route('/shopping-lists/<int:list_id>/participants/<int:user_id>', methods=['DELETE'])
 def remove_shopping_list_participant(list_id, user_id):
+    require_shopping_list(list_id)
+    me = current_user().id
+    if user_id != me and db.session.get(ShoppingList, list_id).owner_id != me:
+        raise ForbiddenError("Solo il proprietario può rimuovere altri partecipanti")
     p = ShoppingListParticipant.query.filter_by(
         shopping_list_id=list_id, user_id=user_id
     ).first_or_404()
